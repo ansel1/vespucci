@@ -70,9 +70,21 @@ func bigNestedMaps(prefix string, nesting int) map[string]interface{} {
 
 func TestContains(t *testing.T) {
 	tests := []struct {
-		m1, m2   map[string]interface{}
+		v1, v2   interface{}
 		expected bool
 	}{
+		{"red", "red", true},
+		{"red", "green", false},
+		{
+			[]string{"big", "loud"},
+			[]string{"smart", "loud"},
+			false,
+		},
+		{
+			map[string]interface{}{"resource": map[string]interface{}{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": map[string]interface{}{"time": "night", "source": "east"}},
+			map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"smart", "loud"}}},
+			false,
+		},
 		{
 			map[string]interface{}{"color": "red"},
 			map[string]interface{}{"color": "red"},
@@ -160,7 +172,7 @@ func TestContains(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		assert.Equal(t, test.expected, Contains(test.m1, test.m2), pp.Sprintln("m1", test.m1, "m2", test.m2))
+		assert.Equal(t, test.expected, Contains(test.v1, test.v2), pp.Sprintln("m1", test.v1, "m2", test.v2))
 	}
 }
 

@@ -152,14 +152,19 @@ func Contains(v1, v2 interface{}) bool {
 	case Slice:
 		if t2, ok := Adapter(v2).(Slice); ok {
 			e := t2.Visit(func(i int, v2 interface{}) error {
-				return t1.Visit(func(_ int, v1 interface{}) error {
+				e := t1.Visit(func(_ int, v1 interface{}) error {
 					if Contains(v1, v2) {
 						return stop
 					}
 					return nil
 				})
+				if e == nil {
+					// one t2's values was not found in t1.  t1 doesn't contain t2
+					return stop
+				}
+				return nil
 			})
-			return e == stop
+			return e != stop
 		}
 	}
 	return reflect.DeepEqual(v1, v2)
