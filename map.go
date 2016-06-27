@@ -129,23 +129,7 @@ func mergeValueIntoSlice(v interface{}, dst []interface{}) []interface{} {
 //
 // That will return true, despite there being 3 items in contained slice and only one item in the containing slice.  The
 // one item in the containing slice matches each of the items in the contained slice.
-func Contains(m1, m2 map[string]interface{}) bool {
-	if len(m2) > len(m1) {
-		return false
-	}
-	for key, v2 := range m2 {
-		v1, present := m1[key]
-		if !present {
-			return false
-		}
-		if !contains(v1, v2) {
-			return false
-		}
-	}
-	return true
-}
-
-func contains(v1, v2 interface{}) bool {
+func Contains(v1, v2 interface{}) bool {
 	switch t1 := Adapter(v1).(type) {
 	case float64, bool, string, int, int8, int16, int32, float32, nil:
 		return v1 == v2
@@ -158,7 +142,7 @@ func contains(v1, v2 interface{}) bool {
 
 			e := t2.Visit(func(k string, vv2 interface{}) error {
 				vv1, present := t1.Get(k)
-				if !present || !contains(vv1, vv2) {
+				if !present || !Contains(vv1, vv2) {
 					return stop
 				}
 				return nil
@@ -169,7 +153,7 @@ func contains(v1, v2 interface{}) bool {
 		if t2, ok := Adapter(v2).(Slice); ok {
 			e := t2.Visit(func(i int, v2 interface{}) error {
 				return t1.Visit(func(_ int, v1 interface{}) error {
-					if contains(v1, v2) {
+					if Contains(v1, v2) {
 						return stop
 					}
 					return nil
