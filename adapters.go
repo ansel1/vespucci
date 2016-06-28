@@ -20,11 +20,24 @@ type Slice interface {
 
 // If v is a string key'd map of any kind, return a Map.
 // If v is a slice of any kind, return a Slice.
+// If v is a number primitive, convert to float64
 // Otherwise, return v.
 func Adapter(v interface{}) interface{} {
 	switch t := v.(type) {
-	case float64, bool, string, int, int8, int16, int32, float32, nil:
+	case bool, string, nil, float64:
 		return v
+	case int:
+		return float64(t)
+	case int8:
+		return float64(t)
+	case int16:
+		return float64(t)
+	case int32:
+		return float64(t)
+	case int64:
+		return float64(t)
+	case float32:
+		return float64(t)
 	case map[string]interface{}:
 		return jsonObj(t)
 	case []interface{}:

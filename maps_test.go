@@ -96,6 +96,41 @@ func TestContains(t *testing.T) {
 			false,
 		},
 		{
+			nil,
+			nil,
+			true,
+		},
+		{
+			nil,
+			"red",
+			false,
+		},
+		{
+			"red",
+			"red",
+			true,
+		},
+		{
+			"red",
+			"green",
+			false,
+		},
+		{
+			true,
+			true,
+			true,
+		},
+		{
+			true,
+			false,
+			false,
+		},
+		{
+			5,
+			float64(5),
+			true,
+		},
+		{
 			map[string]interface{}{"color": "green", "flavor": "beef"},
 			map[string]interface{}{"color": "green"},
 			true,

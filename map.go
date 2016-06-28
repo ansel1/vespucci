@@ -131,8 +131,12 @@ func mergeValueIntoSlice(v interface{}, dst []interface{}) []interface{} {
 // one item in the containing slice matches each of the items in the contained slice.
 func Contains(v1, v2 interface{}) bool {
 	switch t1 := Adapter(v1).(type) {
-	case float64, bool, string, int, int8, int16, int32, float32, nil:
+	case bool, nil, string:
 		return v1 == v2
+	case float64:
+		if t2, ok := Adapter(v2).(float64); ok {
+			return t1 == t2
+		}
 	case Map:
 		if t2, ok := Adapter(v2).(Map); ok {
 			if t2.Len() > t1.Len() {
