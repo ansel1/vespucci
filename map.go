@@ -7,6 +7,7 @@
 package maps
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 )
@@ -181,4 +182,67 @@ func Contains(v1, v2 interface{}) bool {
 // conflicts == !contains(merge(v1, v2), v1)
 func Conflicts(m1, m2 map[string]interface{}) bool {
 	return !Contains(Merge(m1, m2), m1)
+}
+
+func normalize(v1 interface{}) (v2 interface{}, converted bool, err error) {
+	// handle all the basic types we don't need to convert
+	v2 = v1
+	switch t := v1.(type) {
+	case bool, nil, string, float64, int, int8, int16, int32, int64, float32:
+		return
+	case []bool, []string, []float32, []float64, []int, []int8, []int16, []int32, []int64:
+		return
+	case map[string]string, map[string]bool, map[string]float32, map[string]float64, map[string]int, map[string]int8, map[string]int16, map[string]int32, map[string]int64:
+		return
+	case map[string]interface{}:
+		// recurse
+		for key, value := range t {
+			var vv interface{}
+			var conv bool
+			vv, conv, err = normalize(value)
+			if err != nil {
+				return
+			}
+			if conv {
+				t[key] = vv
+				converted = true
+			}
+		}
+	case []interface{}:
+		// recurse
+		for i := 0; i < len(t); i++ {
+			var vv interface{}
+			var conv bool
+			vv, conv, err = normalize(t[i])
+			if err != nil {
+				return
+			}
+			if conv {
+				t[i] = vv
+				converted = true
+			}
+		}
+	default:
+		// marshal/unmarshal
+		converted = true
+		var b []byte
+		b, err = json.Marshal(v1)
+		if err != nil {
+			return
+		}
+		v2 = nil
+		err = json.Unmarshal(b, &v2)
+	}
+	return
+}
+
+// Converts any value into a structure of nested maps, slices, and primitives.
+// Any values which aren't one of those are converted by marshaling and unmarshaling
+// the value through the json package.
+// Effectively the same as using the json package to marshal and then unmarshal
+// the value, but can be faster, as it will traverse the object and avoid the
+// marshalling dance if the value is already a map, slice, or primitive.
+func Normalize(v1 interface{}) (v2 interface{}, err error) {
+	v2, _, err = normalize(v1)
+	return
 }

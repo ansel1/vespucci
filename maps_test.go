@@ -332,3 +332,34 @@ func toMap(s string) (out map[string]interface{}) {
 	}
 	return
 }
+
+type Widget struct {
+	Size  int    `json:"size"`
+	Color string `json:"color"`
+}
+
+func TestNormalize(t *testing.T) {
+	tests := []struct {
+		in, out interface{}
+	}{
+		// basic no-op types of cases
+		{5, 5},
+		{"red", "red"},
+		{nil, nil},
+		{float64(10), float64(10)},
+		{float32(12), float32(12)},
+		{true, true},
+		{map[string]interface{}{"red": "green"}, map[string]interface{}{"red": "green"}},
+		{[]interface{}{"red", 4}, []interface{}{"red", 4}},
+		{[]string{"red", "green"}, []string{"red", "green"}},
+		// hits the marshaling path
+		{&Widget{5, "red"}, map[string]interface{}{"size": float64(5), "color": "red"}},
+		// marshaling might occur deep
+		{map[string]interface{}{"widget": &Widget{5, "red"}}, map[string]interface{}{"widget": map[string]interface{}{"size": float64(5), "color": "red"}}},
+	}
+	for _, test := range tests {
+		out, err := Normalize(test.in)
+		assert.NoError(t, err)
+		assert.Equal(t, out, test.out, "in: %v", pp.Sprint(test.in))
+	}
+}
