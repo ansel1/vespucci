@@ -16,6 +16,7 @@ type Slice interface {
 	// func is called for each value in the slice
 	Visit(func(i int, val interface{}) error) error
 	Len() int
+	Get(i int) interface{}
 }
 
 // If v is a string key'd map of any kind, return a Map.

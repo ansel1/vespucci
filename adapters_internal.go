@@ -74,6 +74,10 @@ func (s reflectSlice) Len() int {
 	return reflect.Value(s).Len()
 }
 
+func (s reflectSlice) Get(i int) interface{} {
+	return reflect.Value(s).Index(i).Interface()
+}
+
 type reflectSlice reflect.Value
 
 func (s jsonArray) Visit(f func(i int, val interface{}) error) error {
@@ -87,4 +91,8 @@ func (s jsonArray) Visit(f func(i int, val interface{}) error) error {
 
 func (s jsonArray) Len() int {
 	return len(s)
+}
+
+func (s jsonArray) Get(i int) interface{} {
+	return s[i]
 }

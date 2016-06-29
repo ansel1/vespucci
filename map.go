@@ -9,7 +9,11 @@ package maps
 import (
 	"encoding/json"
 	"errors"
+	"github.com/ansel1/merry"
+	"github.com/elgs/gosplitargs"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 // return a slice of the keys in the map
@@ -245,4 +249,79 @@ func normalize(v1 interface{}) (v2 interface{}, converted bool, err error) {
 func Normalize(v1 interface{}) (v2 interface{}, err error) {
 	v2, _, err = normalize(v1)
 	return
+}
+
+var PathNotFoundError = merry.New("Path not found")
+var PathNotMapError = merry.New("Path not map")
+var PathNotSliceError = merry.New("Path not slice")
+var IndexOutOfBoundsError = merry.New("Index out of bounds")
+
+// Extracts the value at path from v.
+// Path is in the form:
+//
+//     response.things[2].color.red
+//
+// You can use `merry` to test the types of return errors:
+//
+//     _, err := maps.Get("","")
+//     if merry.Is(err, maps.PathNotFoundError) {
+//       ...
+//
+// `v` can be any primitive, map (must be keyed by string, but any value type), or slice, nested arbitrarily deep
+func Get(v interface{}, path string) (interface{}, error) {
+	parts, err := gosplitargs.SplitArgs(path, "\\.", false)
+	if err != nil {
+		return nil, merry.Prepend(err, "Couldn't parse the path")
+	}
+	out := v
+	for i := 0; i < len(parts); i++ {
+		part := strings.TrimSpace(parts[i])
+		if len(part) == 0 {
+			continue
+		}
+		sliceIdx := -1
+		// first check of the path part ends in an array index, like
+		//
+		//     tags[2]
+		//
+		// Extract the "2", and truncate the part to "tags"
+		if bracketIdx := strings.Index(part, "["); bracketIdx > -1 && strings.HasSuffix(part, "]") {
+			if idx, err := strconv.Atoi(part[bracketIdx+1 : len(part)-1]); err == nil {
+				sliceIdx = idx
+				part = part[0:bracketIdx]
+			}
+		}
+		if part = strings.TrimSpace(part); len(part) > 0 {
+			// map key
+			if m, ok := Adapter(out).(Map); ok {
+				var present bool
+				if out, present = m.Get(part); !present {
+					return nil, PathNotFoundError.WithMessagef("%s not found", strings.Join(parts[0:i+1], "."))
+				}
+			} else {
+				errPath := strings.Join(parts[0:i], ".")
+				if len(errPath) == 0 {
+					errPath = "v"
+				}
+				return nil, PathNotMapError.WithMessagef("%s is not a map", errPath)
+			}
+		}
+		if sliceIdx > -1 {
+			// slice index
+			if s, ok := Adapter(out).(Slice); ok {
+				if l := s.Len(); l <= sliceIdx {
+					return nil, IndexOutOfBoundsError.WithMessagef("Index out of bounds at %s (len = %v)", strings.Join(parts[0:i+1], "."), l)
+				} else {
+					out = s.Get(sliceIdx)
+				}
+			} else {
+				errPath := strings.Join(append(parts[0:i], part), ".")
+				if len(errPath) == 0 {
+					errPath = "v"
+				}
+				return nil, PathNotSliceError.WithMessagef("%s is not a slice", errPath)
+			}
+		}
+	}
+	return out, nil
 }

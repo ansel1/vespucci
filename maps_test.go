@@ -3,8 +3,10 @@ package maps
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/ansel1/merry"
 	"github.com/k0kubun/pp"
 	"github.com/stretchr/testify/assert"
+	"gitlab.protectv.local/ncryptify/yugo.git/yugotest"
 	"sort"
 	"testing"
 )
@@ -361,5 +363,46 @@ func TestNormalize(t *testing.T) {
 		out, err := Normalize(test.in)
 		assert.NoError(t, err)
 		assert.Equal(t, out, test.out, "in: %v", pp.Sprint(test.in))
+	}
+}
+
+func TestGet(t *testing.T) {
+	tests := []struct {
+		v, out interface{}
+		path   string
+	}{
+		{5, 5, ""},
+		{[]string{"red"}, "red", "[0]"},
+		{map[string]interface{}{"color": "red"}, "red", "color"},
+		{map[string]interface{}{"tags": []string{"red", "green"}}, "green", "tags[1]"},
+		{map[string]interface{}{"tags": []string{"red", "green"}}, "red", "tags[0]"},
+		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, "red", "resource.tags[0]"},
+		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, []string{"red", "green"}, "resource.tags"},
+		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, map[string]interface{}{"tags": []string{"red", "green"}}, "resource"},
+	}
+	assert := yugotest.NewRequirer(t)
+	for _, test := range tests {
+		result, err := Get(test.v, test.path)
+		assert.NoError(err, "v = %#v, path = %v", test.v, test.path)
+		assert.Equal(test.out, result, "v = %#v, path = %v", test.v, test.path)
+	}
+
+	// errors
+	errorTests := []struct {
+		v         interface{}
+		path, msg string
+		kind      error
+	}{
+		{map[string]interface{}{"tags": []string{"red", "green"}}, "tags[2]", "Index out of bounds at tags[2] (len = 2)", IndexOutOfBoundsError},
+		{[]string{"red", "green"}, "[2]", "Index out of bounds at [2] (len = 2)", IndexOutOfBoundsError},
+		{map[string]interface{}{"tags": "red"}, "tags[2]", "tags is not a slice", PathNotSliceError},
+		{map[string]interface{}{"tags": "red"}, "[2]", "v is not a slice", PathNotSliceError},
+		{[]string{"red", "green"}, "tags[2]", "v is not a map", PathNotMapError},
+		{map[string]interface{}{"tags": "red"}, "color", "color not found", PathNotFoundError},
+	}
+	for _, test := range errorTests {
+		_, err := Get(test.v, test.path)
+		assert.EqualError(err, test.msg, "v = %#v, path = %v", test.v, test.path)
+		assert.True(merry.Is(err, test.kind), "Wrong type of error.  Expected %v", test.kind)
 	}
 }

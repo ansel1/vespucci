@@ -1,0 +1,4 @@
+package: github.com/ansel1/vespucci
+import:
+- package: github.com/ansel1/merry
+- package: github.com/elgs/gosplitargs
