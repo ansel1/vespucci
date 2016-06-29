@@ -372,3 +372,40 @@ func Get(v interface{}, path string) (interface{}, error) {
 	}
 	return out, nil
 }
+
+// returns true if v is:
+//
+// 1. nil
+// 2. an empty string
+// 3. an empty slice
+// 4. an empty map
+// 5. an empty array
+// 6. an empty channel
+//
+// returns false otherwise
+func Empty(v interface{}) bool {
+	// no op.  just means the value wasn't a type that supports Len()
+	defer func() { recover() }()
+	switch t := v.(type) {
+	case bool, int, int8, int16, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
+		return false
+	case nil:
+		return true
+	case string:
+		return len(strings.TrimSpace(t)) == 0
+	case map[string]interface{}:
+		return len(t) == 0
+	case []interface{}:
+		return len(t) == 0
+	default:
+		rv := reflect.ValueOf(v)
+		if rv.IsNil() {
+			// handle case of (*Widget)(nil)
+			return true
+		}
+		if rv.Kind() == reflect.Ptr {
+			return Empty(rv.Elem())
+		}
+		return reflect.ValueOf(v).Len() == 0
+	}
+}

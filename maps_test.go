@@ -417,3 +417,24 @@ func TestGet(t *testing.T) {
 		assert.True(t, merry.Is(err, test.kind), "Wrong type of error.  Expected %v", test.kind)
 	}
 }
+
+func TestEmpty(t *testing.T) {
+	var ptr *Widget
+	emptyTests := []interface{}{
+		nil, "", "  ", map[string]interface{}{},
+		[]interface{}{}, map[string]string{},
+		[]string{}, ptr, (*Widget)(nil),
+	}
+	for _, v := range emptyTests {
+		assert.True(t, Empty(v), "v = %#v", v)
+	}
+	notEmptyTests := []interface{}{
+		5, float64(5), true, false,
+		"asdf", " asdf ", map[string]interface{}{"color": "red"},
+		map[string]string{"color": "red"}, []interface{}{"color", "red"},
+		[]string{"green", "red"}, Widget{}, &Widget{},
+	}
+	for _, v := range notEmptyTests {
+		assert.False(t, Empty(v), "v = %#v", v)
+	}
+}
