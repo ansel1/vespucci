@@ -8,7 +8,6 @@ package maps
 
 import (
 	"encoding/json"
-	"errors"
 	"github.com/ansel1/merry"
 	"github.com/elgs/gosplitargs"
 	"reflect"
@@ -33,80 +32,56 @@ func Keys(m map[string]interface{}) (keys []string) {
 //
 //    [5, 6, 7] + [5, 5, 5, 4] = [5, 6, 7, 4]
 //
-// The type of all maps in the returned result will be
-// map[string]interface{}, and the type of all slices in the result
-// will be []interface{} (regardless of the types of the maps and slices
-// in the arguments.
-func Merge(m1, m2 map[string]interface{}) map[string]interface{} {
-	if m1 == nil && m2 == nil {
-		return nil
-	}
-	r := map[string]interface{}{}
-	for key, value := range m1 {
-		r[key] = value
-	}
-	for key, value := range m2 {
-		r[key] = mergeMapValues(r[key], value)
-	}
-	return r
-}
-
-var stop = errors.New("")
-
-func mergeMapValues(v1, v2 interface{}) interface{} {
-	switch t1 := Adapter(v1).(type) {
-	case Map:
-		if t2, ok := Adapter(v2).(Map); ok {
-			r := map[string]interface{}{}
-			t1.Visit(func(k string, v interface{}) error {
-				r[k] = v
-				return nil
-			})
-			t2.Visit(func(k string, v interface{}) error {
-				r[k] = mergeMapValues(r[k], v)
-				return nil
-			})
-			return r
+// All values in the result will be normalized according to the following
+// rules:
+//
+// 1. All maps with string keys will be converted into map[string]interface{}
+// 2. All slices will be converted to []interface{}
+// 3. All primitive numeric types will be converted into float64
+// 4. All other types will not be converted, and will not be merged.  v2's value will just overwrite v1's
+//
+// New copies of all maps and slices are made, so v1 and v2 will not be modified.
+func Merge(v1, v2 interface{}) interface{} {
+	v1, _ = normalize(v1, true, false, true)
+	v2, _ = normalize(v2, true, false, true)
+	switch t1 := v1.(type) {
+	case map[string]interface{}:
+		if t2, isMap := v2.(map[string]interface{}); isMap {
+			for key, value := range t2 {
+				t1[key] = Merge(t1[key], value)
+			}
+			return t1
 		}
-	case Slice:
-		if t2, ok := Adapter(v2).(Slice); ok {
-			var comb []interface{}
-			t1.Visit(func(_ int, v interface{}) error {
-				comb = append(comb, v)
-				return nil
-			})
-			t2.Visit(func(_ int, v interface{}) error {
-				comb = mergeValueIntoSlice(v, comb)
-				return nil
-			})
-			return comb
+	case []interface{}:
+		if t2, isSlice := v2.([]interface{}); isSlice {
+			orig := t1[:]
+			for _, value := range t2 {
+				if !sliceContains(orig, value) {
+					t1 = append(t1, value)
+				}
+			}
+			return t1
 		}
 	}
 	return v2
 }
 
-func mergeValueIntoSlice(v interface{}, dst []interface{}) []interface{} {
+func sliceContains(s []interface{}, v interface{}) bool {
 	switch v.(type) {
-	case string, int, int8, int16, int32, float64, float32, bool, nil:
-		for _, v2 := range dst {
-			if v == v2 {
-				return dst
+	case string, float64, bool, nil:
+		for _, value := range s {
+			if value == v {
+				return true
 			}
 		}
-	default:
-		for _, rv := range dst {
-			if reflect.DeepEqual(rv, v) {
-				// value is already in the dst slice.  Skip it.
-				// todo: not clear what the best behavior is here.  slices are not sets, so uniqueness is not implied
-				// but generally, this is probably what developers intend when they "merge" two slices.
-				// also, if both slices contain other slices or maps, they won't be merged.  Again, not sure
-				// how you pair up value to merge anyway, but hopefully this simple implementation is sufficient
-				// for now.
-				return dst
-			}
+		return false
+	}
+	for _, value := range s {
+		if reflect.DeepEqual(v, value) {
+			return true
 		}
 	}
-	return append(dst, v)
+	return false
 }
 
 // Returns true if m1 contains all the key paths as m2, and
@@ -135,48 +110,59 @@ func mergeValueIntoSlice(v interface{}, dst []interface{}) []interface{} {
 // That will return true, despite there being 3 items in contained slice and only one item in the containing slice.  The
 // one item in the containing slice matches each of the items in the contained slice.
 func Contains(v1, v2 interface{}) bool {
-	switch t1 := Adapter(v1).(type) {
-	case bool, nil, string:
+	v1, _ = normalize(v1, false, false, false)
+	v2, _ = normalize(v2, false, false, false)
+
+	switch t1 := v1.(type) {
+	case bool, nil, string, float64:
 		return v1 == v2
-	case float64:
-		if t2, ok := Adapter(v2).(float64); ok {
-			return t1 == t2
+	case map[string]interface{}:
+		t2, isMap := v2.(map[string]interface{})
+		if !isMap {
+			// v1 is a map, but v2 isn't; v1 can't contain v2
+			return false
 		}
-	case Map:
-		if t2, ok := Adapter(v2).(Map); ok {
-			if t2.Len() > t1.Len() {
-				// if t2 is bigger than t1, then t1 can't contain t2
+		if len(t2) > len(t1) {
+			// if t2 is bigger than t1, then t1 can't contain t2
+			return false
+		}
+		for key, val2 := range t2 {
+			val1, present := t1[key]
+			if !present || !Contains(val1, val2) {
 				return false
 			}
-
-			e := t2.Visit(func(k string, vv2 interface{}) error {
-				vv1, present := t1.Get(k)
-				if !present || !Contains(vv1, vv2) {
-					return stop
-				}
-				return nil
-			})
-			return e == nil
 		}
-	case Slice:
-		if t2, ok := Adapter(v2).(Slice); ok {
-			e := t2.Visit(func(i int, v2 interface{}) error {
-				e := t1.Visit(func(_ int, v1 interface{}) error {
-					if Contains(v1, v2) {
-						return stop
-					}
-					return nil
-				})
-				if e == nil {
-					// one t2's values was not found in t1.  t1 doesn't contain t2
-					return stop
-				}
-				return nil
-			})
-			return e != stop
+		return true
+	case []interface{}:
+		t2, isSlice := v2.([]interface{})
+		if !isSlice {
+			// v1 is a slice, but v2 isn't; v1 can't contain v2
+			return false
 		}
+		// first, normalize the values in v1, so we
+		// don't re-normalize them in each loop
+		t1copy := make([]interface{}, len(t1))
+		for i, value := range t1 {
+			t1copy[i], _ = normalize(value, false, false, false)
+		}
+		for _, val2 := range t2 {
+			found := false
+		Search:
+			for _, value := range t1copy {
+				if Contains(value, val2) {
+					found = true
+					break Search
+				}
+			}
+			if !found {
+				// one of the values in v2 was not found in v1
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(v1, v2)
 	}
-	return reflect.DeepEqual(v1, v2)
 }
 
 // returns true if trees share common key paths, but the values
@@ -188,67 +174,125 @@ func Conflicts(m1, m2 map[string]interface{}) bool {
 	return !Contains(Merge(m1, m2), m1)
 }
 
-func normalize(v1 interface{}) (v2 interface{}, converted bool, err error) {
-	// handle all the basic types we don't need to convert
-	v2 = v1
-	switch t := v1.(type) {
-	case bool, nil, string, float64, int, int8, int16, int32, int64, float32:
+func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interface{}, err error) {
+	v2 = v
+	copied := false
+	switch t := v.(type) {
+	case bool, string, nil, float64:
 		return
-	case []bool, []string, []float32, []float64, []int, []int8, []int16, []int32, []int64:
-		return
-	case map[string]string, map[string]bool, map[string]float32, map[string]float64, map[string]int, map[string]int8, map[string]int16, map[string]int32, map[string]int64:
-		return
-	case map[string]interface{}:
-		// recurse
-		for key, value := range t {
-			var vv interface{}
-			var conv bool
-			vv, conv, err = normalize(value)
-			if err != nil {
-				return
-			}
-			if conv {
-				t[key] = vv
-				converted = true
-			}
-		}
-	case []interface{}:
-		// recurse
-		for i := 0; i < len(t); i++ {
-			var vv interface{}
-			var conv bool
-			vv, conv, err = normalize(t[i])
-			if err != nil {
-				return
-			}
-			if conv {
-				t[i] = vv
-				converted = true
-			}
-		}
-	default:
-		// marshal/unmarshal
-		converted = true
-		var b []byte
-		b, err = json.Marshal(v1)
-		if err != nil {
+	case int:
+		return float64(t), nil
+	case int8:
+		return float64(t), nil
+	case int16:
+		return float64(t), nil
+	case int32:
+		return float64(t), nil
+	case int64:
+		return float64(t), nil
+	case float32:
+		return float64(t), nil
+	case uint:
+		return float64(t), nil
+	case uint8:
+		return float64(t), nil
+	case uint16:
+		return float64(t), nil
+	case uint32:
+		return float64(t), nil
+	case uint64:
+		return float64(t), nil
+	case map[string]interface{}, []interface{}:
+		if !makeCopies && !recurse {
 			return
 		}
-		v2 = nil
-		err = json.Unmarshal(b, &v2)
+	default:
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Map && rv.Type().Key().Kind() == reflect.String {
+			copied = true
+			m := make(map[string]interface{}, rv.Len())
+			for _, v := range rv.MapKeys() {
+				m[v.String()] = rv.MapIndex(v).Interface()
+			}
+			v2 = m
+		} else if rv.Kind() == reflect.Slice {
+			copied = true
+			l := rv.Len()
+			s := make([]interface{}, l)
+			for i := 0; i < l; i++ {
+				s[i] = rv.Index(i).Interface()
+			}
+			v2 = s
+		} else if doMarshaling {
+			// marshal/unmarshal
+			var b []byte
+			b, err = json.Marshal(v)
+			if err != nil {
+				return
+			}
+			v2 = nil
+			err = json.Unmarshal(b, &v2)
+			return
+		}
 	}
+	if recurse || (makeCopies && !copied) {
+		switch t := v2.(type) {
+		case map[string]interface{}:
+			var m map[string]interface{}
+			if makeCopies && !copied {
+				m = make(map[string]interface{}, len(t))
+			} else {
+				// modify in place
+				m = t
+			}
+			v2 = m
+			for key, value := range t {
+				if recurse {
+					if value, err = normalize(value, makeCopies, doMarshaling, recurse); err != nil {
+						return
+					}
+				}
+				m[key] = value
+			}
+		case []interface{}:
+			var s []interface{}
+			if makeCopies && !copied {
+				s = make([]interface{}, len(t))
+			} else {
+				// modify in place
+				s = t
+			}
+			v2 = s
+			for i := 0; i < len(t); i++ {
+				if recurse {
+					if s[i], err = normalize(t[i], makeCopies, doMarshaling, recurse); err != nil {
+						return
+					}
+				} else {
+					s[i] = t[i]
+				}
+			}
+		default:
+			panic("Should be either a map or slice by now")
+		}
+	}
+
 	return
 }
 
-// Converts any value into a structure of nested maps, slices, and primitives.
-// Any values which aren't one of those are converted by marshaling and unmarshaling
-// the value through the json package.
-// Effectively the same as using the json package to marshal and then unmarshal
-// the value, but can be faster, as it will traverse the object and avoid the
-// marshalling dance if the value is already a map, slice, or primitive.
-func Normalize(v1 interface{}) (v2 interface{}, err error) {
-	v2, _, err = normalize(v1)
-	return
+// Recursively converts v1 into a tree of maps, slices, and primitives.
+// The types in the result will be the types the json package uses for unmarshalling
+// into interface{}.  The rules are:
+//
+// 1. All maps with string keys will be converted into map[string]interface{}
+// 2. All slices will be converted to []interface{}
+// 3. All primitive numeric types will be converted into float64
+// 4. string, bool, and nil are unmodified
+// 5. All other values will be converted into the above types by doing a json.Marshal and Unmarshal
+//
+// Values in v1 will be modified in place if possible
+func Normalize(v1 interface{}) (interface{}, error) {
+	return normalize(v1, false, true, true)
 }
 
 var PathNotFoundError = merry.New("Path not found")
@@ -291,11 +335,13 @@ func Get(v interface{}, path string) (interface{}, error) {
 				part = part[0:bracketIdx]
 			}
 		}
+
 		if part = strings.TrimSpace(part); len(part) > 0 {
 			// map key
-			if m, ok := Adapter(out).(Map); ok {
+			out, _ = normalize(out, false, false, false)
+			if m, ok := out.(map[string]interface{}); ok {
 				var present bool
-				if out, present = m.Get(part); !present {
+				if out, present = m[part]; !present {
 					return nil, PathNotFoundError.WithMessagef("%s not found", strings.Join(parts[0:i+1], "."))
 				}
 			} else {
@@ -308,11 +354,12 @@ func Get(v interface{}, path string) (interface{}, error) {
 		}
 		if sliceIdx > -1 {
 			// slice index
-			if s, ok := Adapter(out).(Slice); ok {
-				if l := s.Len(); l <= sliceIdx {
+			out, _ = normalize(out, false, false, false)
+			if s, ok := out.([]interface{}); ok {
+				if l := len(s); l <= sliceIdx {
 					return nil, IndexOutOfBoundsError.WithMessagef("Index out of bounds at %s (len = %v)", strings.Join(parts[0:i+1], "."), l)
 				} else {
-					out = s.Get(sliceIdx)
+					out = s[sliceIdx]
 				}
 			} else {
 				errPath := strings.Join(append(parts[0:i], part), ".")

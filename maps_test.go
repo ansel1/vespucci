@@ -6,7 +6,7 @@ import (
 	"github.com/ansel1/merry"
 	"github.com/k0kubun/pp"
 	"github.com/stretchr/testify/assert"
-	"gitlab.protectv.local/ncryptify/yugo.git/yugotest"
+	"github.com/stretchr/testify/require"
 	"sort"
 	"testing"
 )
@@ -35,11 +35,23 @@ func TestMerge(t *testing.T) {
 			map[string]interface{}{"tags": []string{"green", "blue"}},
 			map[string]interface{}{"tags": []interface{}{"red", "green", "blue"}},
 		},
+		{
+			map[string]interface{}{"color": "red"},
+			map[string]interface{}{"color": "blue"},
+			map[string]interface{}{"color": "blue"},
+		},
 	}
 	for _, test := range literalMapsTests {
 		r := Merge(test.m1, test.m2)
 		assert.Equal(t, test.m3, r)
 	}
+
+	// make sure v1 is not modified
+	m1 := map[string]interface{}{"color": "blue"}
+	m2 := map[string]interface{}{"color": "red"}
+	m3 := Merge(m1, m2)
+	assert.Equal(t, map[string]interface{}{"color": "red"}, m3)
+	assert.Equal(t, map[string]interface{}{"color": "blue"}, m1)
 }
 
 func TestKeys(t *testing.T) {
@@ -345,15 +357,15 @@ func TestNormalize(t *testing.T) {
 		in, out interface{}
 	}{
 		// basic no-op types of cases
-		{5, 5},
+		{5, float64(5)},
 		{"red", "red"},
 		{nil, nil},
 		{float64(10), float64(10)},
-		{float32(12), float32(12)},
+		{float32(12), float64(12)},
 		{true, true},
 		{map[string]interface{}{"red": "green"}, map[string]interface{}{"red": "green"}},
-		{[]interface{}{"red", 4}, []interface{}{"red", 4}},
-		{[]string{"red", "green"}, []string{"red", "green"}},
+		{[]interface{}{"red", 4}, []interface{}{"red", float64(4)}},
+		{[]string{"red", "green"}, []interface{}{"red", "green"}},
 		// hits the marshaling path
 		{&Widget{5, "red"}, map[string]interface{}{"size": float64(5), "color": "red"}},
 		// marshaling might occur deep
@@ -361,8 +373,8 @@ func TestNormalize(t *testing.T) {
 	}
 	for _, test := range tests {
 		out, err := Normalize(test.in)
-		assert.NoError(t, err)
-		assert.Equal(t, out, test.out, "in: %v", pp.Sprint(test.in))
+		require.NoError(t, err)
+		require.Equal(t, test.out, out, "in: %v", pp.Sprint(test.in))
 	}
 }
 
@@ -380,11 +392,10 @@ func TestGet(t *testing.T) {
 		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, []string{"red", "green"}, "resource.tags"},
 		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, map[string]interface{}{"tags": []string{"red", "green"}}, "resource"},
 	}
-	assert := yugotest.NewRequirer(t)
 	for _, test := range tests {
 		result, err := Get(test.v, test.path)
-		assert.NoError(err, "v = %#v, path = %v", test.v, test.path)
-		assert.Equal(test.out, result, "v = %#v, path = %v", test.v, test.path)
+		require.NoError(t, err, "v = %#v, path = %v", test.v, test.path)
+		require.Equal(t, test.out, result, "v = %#v, path = %v", test.v, test.path)
 	}
 
 	// errors
@@ -402,7 +413,7 @@ func TestGet(t *testing.T) {
 	}
 	for _, test := range errorTests {
 		_, err := Get(test.v, test.path)
-		assert.EqualError(err, test.msg, "v = %#v, path = %v", test.v, test.path)
-		assert.True(merry.Is(err, test.kind), "Wrong type of error.  Expected %v", test.kind)
+		assert.EqualError(t, err, test.msg, "v = %#v, path = %v", test.v, test.path)
+		assert.True(t, merry.Is(err, test.kind), "Wrong type of error.  Expected %v", test.kind)
 	}
 }
