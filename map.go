@@ -342,14 +342,14 @@ func Get(v interface{}, path string) (interface{}, error) {
 			if m, ok := out.(map[string]interface{}); ok {
 				var present bool
 				if out, present = m[part]; !present {
-					return nil, PathNotFoundError.WithMessagef("%s not found", strings.Join(parts[0:i+1], "."))
+					return nil, PathNotFoundError.Here().WithMessagef("%s not found", strings.Join(parts[0:i+1], "."))
 				}
 			} else {
 				errPath := strings.Join(parts[0:i], ".")
 				if len(errPath) == 0 {
 					errPath = "v"
 				}
-				return nil, PathNotMapError.WithMessagef("%s is not a map", errPath)
+				return nil, PathNotMapError.Here().WithMessagef("%s is not a map", errPath)
 			}
 		}
 		if sliceIdx > -1 {
@@ -357,7 +357,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 			out, _ = normalize(out, false, false, false)
 			if s, ok := out.([]interface{}); ok {
 				if l := len(s); l <= sliceIdx {
-					return nil, IndexOutOfBoundsError.WithMessagef("Index out of bounds at %s (len = %v)", strings.Join(parts[0:i+1], "."), l)
+					return nil, IndexOutOfBoundsError.Here().WithMessagef("Index out of bounds at %s (len = %v)", strings.Join(parts[0:i+1], "."), l)
 				} else {
 					out = s[sliceIdx]
 				}
@@ -366,7 +366,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 				if len(errPath) == 0 {
 					errPath = "v"
 				}
-				return nil, PathNotSliceError.WithMessagef("%s is not a slice", errPath)
+				return nil, PathNotSliceError.Here().WithMessagef("%s is not a slice", errPath)
 			}
 		}
 	}
