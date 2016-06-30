@@ -208,14 +208,15 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 		}
 	default:
 		rv := reflect.ValueOf(v)
-		if rv.Kind() == reflect.Map && rv.Type().Key().Kind() == reflect.String {
+		switch {
+		case rv.Kind() == reflect.Map && rv.Type().Key().Kind() == reflect.String:
 			copied = true
 			m := make(map[string]interface{}, rv.Len())
 			for _, v := range rv.MapKeys() {
 				m[v.String()] = rv.MapIndex(v).Interface()
 			}
 			v2 = m
-		} else if rv.Kind() == reflect.Slice {
+		case rv.Kind() == reflect.Slice:
 			copied = true
 			l := rv.Len()
 			s := make([]interface{}, l)
@@ -223,7 +224,7 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 				s[i] = rv.Index(i).Interface()
 			}
 			v2 = s
-		} else if doMarshaling {
+		case doMarshaling:
 			// marshal/unmarshal
 			var b []byte
 			b, err = json.Marshal(v)
@@ -232,6 +233,9 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 			}
 			v2 = nil
 			err = json.Unmarshal(b, &v2)
+			return
+		default:
+			// return value unchanged
 			return
 		}
 	}

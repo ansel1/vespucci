@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"sort"
 	"testing"
+	"time"
 )
 
 func TestMerge(t *testing.T) {
@@ -437,4 +438,11 @@ func TestEmpty(t *testing.T) {
 	for _, v := range notEmptyTests {
 		assert.False(t, Empty(v), "v = %#v", v)
 	}
+}
+
+func TestInternalNormalize(t *testing.T) {
+	tm := time.Now()
+	v, err := normalize(tm, false, false, true)
+	assert.NoError(t, err)
+	assert.Equal(t, v, tm)
 }
