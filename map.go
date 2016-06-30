@@ -174,7 +174,24 @@ func Conflicts(m1, m2 map[string]interface{}) bool {
 	return !Contains(Merge(m1, m2), m1)
 }
 
-func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interface{}, err error) {
+type NormalizeOptions struct {
+	// Make copies of all maps and slices.  The result will not share
+	// any maps or slices with input value.
+	Copy bool
+
+	// if values are encountered which are not primitives, maps, or slices, attempt to
+	// turn them into primitives, maps, and slices by running through json.Marshal and json.Unmarshal
+	Marshal bool
+
+	// Perform the operation recursively.  If false, only v is normalized, but nested values are not
+	Deep bool
+}
+
+func NormalizeWithOptions(v interface{}, opt NormalizeOptions) (interface{}, error) {
+	return normalize(v, opt.Copy, opt.Marshal, opt.Deep)
+}
+
+func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err error) {
 	v2 = v
 	copied := false
 	switch t := v.(type) {
@@ -203,7 +220,7 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 	case uint64:
 		return float64(t), nil
 	case map[string]interface{}, []interface{}:
-		if !makeCopies && !recurse {
+		if !copies && !deep {
 			return
 		}
 	default:
@@ -224,7 +241,7 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 				s[i] = rv.Index(i).Interface()
 			}
 			v2 = s
-		case doMarshaling:
+		case marshal:
 			// marshal/unmarshal
 			var b []byte
 			b, err = json.Marshal(v)
@@ -239,11 +256,11 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 			return
 		}
 	}
-	if recurse || (makeCopies && !copied) {
+	if deep || (copies && !copied) {
 		switch t := v2.(type) {
 		case map[string]interface{}:
 			var m map[string]interface{}
-			if makeCopies && !copied {
+			if copies && !copied {
 				m = make(map[string]interface{}, len(t))
 			} else {
 				// modify in place
@@ -251,8 +268,8 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 			}
 			v2 = m
 			for key, value := range t {
-				if recurse {
-					if value, err = normalize(value, makeCopies, doMarshaling, recurse); err != nil {
+				if deep {
+					if value, err = normalize(value, copies, marshal, deep); err != nil {
 						return
 					}
 				}
@@ -260,7 +277,7 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 			}
 		case []interface{}:
 			var s []interface{}
-			if makeCopies && !copied {
+			if copies && !copied {
 				s = make([]interface{}, len(t))
 			} else {
 				// modify in place
@@ -268,8 +285,8 @@ func normalize(v interface{}, makeCopies, doMarshaling, recurse bool) (v2 interf
 			}
 			v2 = s
 			for i := 0; i < len(t); i++ {
-				if recurse {
-					if s[i], err = normalize(t[i], makeCopies, doMarshaling, recurse); err != nil {
+				if deep {
+					if s[i], err = normalize(t[i], copies, marshal, deep); err != nil {
 						return
 					}
 				} else {
