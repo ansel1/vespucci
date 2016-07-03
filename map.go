@@ -84,6 +84,41 @@ func sliceContains(s []interface{}, v interface{}) bool {
 	return false
 }
 
+// Applies a transformation function to each value in tree.
+// Values are normalized before being passed to the transformer function, the
+// equivalent of calling Normalize(Copies:false,Deep:false,Marshal:false).
+// Any maps and slices are passed to the transform function as the whole value
+// first, then each child value of the map/slice is passed to the transform
+// function.
+// The value returned by the transformer will replace the original value.
+// If the transform function returns a map[string]interface{} or []interface{}, Transform()
+// will recurse into them.
+func Transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
+	v, _ = normalize(v, false, false, false)
+	var err error
+	v, err = transformer(v)
+	if err != nil {
+		return v, err
+	}
+	switch t := v.(type) {
+	case map[string]interface{}:
+		for key, value := range t {
+			t[key], err = Transform(value, transformer)
+			if err != nil {
+				break
+			}
+		}
+	case []interface{}:
+		for i, value := range t {
+			t[i], err = Transform(value, transformer)
+			if err != nil {
+				break
+			}
+		}
+	}
+	return v, err
+}
+
 // Returns true if m1 contains all the key paths as m2, and
 // the values at those paths are the equal.  I.E. returns
 // true if m2 is a subset of m1.

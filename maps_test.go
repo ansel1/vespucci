@@ -2,6 +2,7 @@ package maps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/k0kubun/pp"
@@ -445,4 +446,75 @@ func TestInternalNormalize(t *testing.T) {
 	v, err := normalize(tm, false, false, true)
 	assert.NoError(t, err)
 	assert.Equal(t, v, tm)
+}
+
+func TestTransform(t *testing.T) {
+	in := map[string]interface{}{
+		"color": "red",
+		"size":  5,
+		"tags": []interface{}{
+			"blue",
+			false,
+			nil,
+		},
+		"labels": map[string]interface{}{
+			"region": "east",
+		},
+	}
+	transformer := func(in interface{}) (interface{}, error) {
+		if s, ok := in.(string); ok {
+			return s + "s", nil
+		}
+		return in, nil
+	}
+	expected := map[string]interface{}{
+		"color": "reds",
+		"size":  float64(5),
+		"tags": []interface{}{
+			"blues",
+			false,
+			nil,
+		},
+		"labels": map[string]interface{}{
+			"region": "easts",
+		},
+	}
+	out, err := Transform(in, transformer)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, out)
+
+	// errors float out
+	transformer = func(in interface{}) (interface{}, error) {
+		if in == nil {
+			return nil, errors.New("stop")
+		}
+		return in, nil
+	}
+	_, err = Transform(out, transformer)
+	assert.EqualError(t, err, "stop")
+
+	// I can transform the maps and slices at the top level too
+	transformer = func(in interface{}) (interface{}, error) {
+		switch t := in.(type) {
+		case map[string]interface{}:
+			delete(t, "labels")
+		case []interface{}:
+			in = append(t, "dogs")
+		}
+		return in, nil
+	}
+
+	expected = map[string]interface{}{
+		"color": "reds",
+		"size":  float64(5),
+		"tags": []interface{}{
+			"blues",
+			false,
+			nil,
+			"dogs",
+		},
+	}
+	out, err = Transform(out, transformer)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, out)
 }
