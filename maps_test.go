@@ -416,7 +416,7 @@ func TestGet(t *testing.T) {
 	for _, test := range errorTests {
 		_, err := Get(test.v, test.path)
 		assert.EqualError(t, err, test.msg, "v = %#v, path = %v", test.v, test.path)
-		assert.True(t, merry.Is(err, test.kind), "Wrong type of error.  Expected %v", test.kind)
+		assert.True(t, merry.Is(err, test.kind), "Wrong type of error.  Expected %v, was %v", test.kind, err)
 	}
 }
 
@@ -517,4 +517,33 @@ func TestTransform(t *testing.T) {
 	out, err = Transform(out, transformer)
 	assert.NoError(t, err)
 	assert.Equal(t, expected, out)
+}
+
+func TestParsePath(t *testing.T) {
+	tests := []struct {
+		in           string
+		out          Path
+		checkReverse bool
+	}{
+		{"", nil, true},
+		{"a", Path{"a"}, true},
+		{"a.b", Path{"a", "b"}, true},
+		{"a.b..c", Path{"a", "b", "c"}, false},
+		{"[3]", Path{3}, true},
+		{"a[3]", Path{"a", 3}, true},
+		{"a.b[3]", Path{"a", "b", 3}, true},
+		{"a[1].b[3]", Path{"a", 1, "b", 3}, true},
+		{"[1].[3]", Path{1, 3}, true},
+		{"a[b].c", Path{"a[b]", "c"}, true},
+	}
+	for _, test := range tests {
+		out, err := ParsePath(test.in)
+		assert.NoError(t, err)
+		assert.Equal(t, test.out, out, "input: %v", test.in)
+		if test.checkReverse {
+			assert.Equal(t, test.in, out.String(), "testing conversion back to string")
+		}
+	}
+
+	assert.Equal(t, "a.b[3]", Path{"a", "b", 3, "c", 4}[0:3].String())
 }

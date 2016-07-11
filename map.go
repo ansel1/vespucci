@@ -7,9 +7,10 @@
 package maps
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"github.com/ansel1/merry"
-	"github.com/elgs/gosplitargs"
 	"reflect"
 	"strconv"
 	"strings"
@@ -124,7 +125,7 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 // true if m2 is a subset of m1.
 // This will recurse into nested maps.
 // When comparing to slice values, it will return true if
-// slice 1 has at least one value which contains each of the
+// slice 1 has at least one value which contains each of the`
 // values in slice 2.  It's kind of dumb though.  If slice 1
 // contains a single value, say a big map, which contains *all*
 // the values in slice 2, then this will return true.  In other words.
@@ -356,6 +357,60 @@ var PathNotMapError = merry.New("Path not map")
 var PathNotSliceError = merry.New("Path not slice")
 var IndexOutOfBoundsError = merry.New("Index out of bounds")
 
+type Path []interface{}
+
+func ParsePath(path string) (Path, error) {
+	var parsedPath Path
+	parts := strings.Split(path, ".")
+	for i := 0; i < len(parts); i++ {
+		part := parts[i]
+
+		arrayIdx := -1
+		// first check of the path part ends in an array index, like
+		//
+		//     tags[2]
+		//
+		// Extract the "2", and truncate the part to "tags"
+		if bracketIdx := strings.Index(part, "["); bracketIdx > -1 && strings.HasSuffix(part, "]") {
+			if idx, err := strconv.Atoi(part[bracketIdx+1 : len(part)-1]); err == nil {
+				arrayIdx = idx
+				part = part[0:bracketIdx]
+			}
+		}
+
+		part = strings.TrimSpace(part)
+		if len(part) > 0 {
+			parsedPath = append(parsedPath, part)
+		}
+		if arrayIdx > -1 {
+			parsedPath = append(parsedPath, arrayIdx)
+		}
+	}
+	return parsedPath, nil
+}
+
+func (p Path) String() string {
+	buf := bytes.NewBuffer(nil)
+
+	for _, elem := range p {
+		switch t := elem.(type) {
+		case string:
+			if buf.Len() > 0 {
+				buf.WriteString(".")
+			}
+			buf.WriteString(t)
+		case int:
+			if strings.HasSuffix(buf.String(), "]") {
+				buf.WriteString(".")
+			}
+			fmt.Fprintf(buf, "[%d]", t)
+		default:
+			panic(merry.Errorf("Path element was not a string or int! elem: %#v", elem))
+		}
+	}
+	return buf.String()
+}
+
 // Extracts the value at path from v.
 // Path is in the form:
 //
@@ -369,61 +424,45 @@ var IndexOutOfBoundsError = merry.New("Index out of bounds")
 //
 // `v` can be any primitive, map (must be keyed by string, but any value type), or slice, nested arbitrarily deep
 func Get(v interface{}, path string) (interface{}, error) {
-	parts, err := gosplitargs.SplitArgs(path, "\\.", false)
+	parsedPath, err := ParsePath(path)
 	if err != nil {
 		return nil, merry.Prepend(err, "Couldn't parse the path")
 	}
 	out := v
-	for i := 0; i < len(parts); i++ {
-		part := strings.TrimSpace(parts[i])
-		if len(part) == 0 {
-			continue
-		}
-		sliceIdx := -1
-		// first check of the path part ends in an array index, like
-		//
-		//     tags[2]
-		//
-		// Extract the "2", and truncate the part to "tags"
-		if bracketIdx := strings.Index(part, "["); bracketIdx > -1 && strings.HasSuffix(part, "]") {
-			if idx, err := strconv.Atoi(part[bracketIdx+1 : len(part)-1]); err == nil {
-				sliceIdx = idx
-				part = part[0:bracketIdx]
-			}
-		}
-
-		if part = strings.TrimSpace(part); len(part) > 0 {
-			// map key
+	for i, part := range parsedPath {
+		switch t := part.(type) {
+		case string:
 			out, _ = normalize(out, false, false, false)
 			if m, ok := out.(map[string]interface{}); ok {
 				var present bool
-				if out, present = m[part]; !present {
-					return nil, PathNotFoundError.Here().WithMessagef("%s not found", strings.Join(parts[0:i+1], "."))
+				if out, present = m[t]; !present {
+					return nil, PathNotFoundError.Here().WithMessagef("%v not found", parsedPath[0:i+1])
 				}
 			} else {
-				errPath := strings.Join(parts[0:i], ".")
-				if len(errPath) == 0 {
-					errPath = "v"
+				if i > 0 {
+					return nil, PathNotMapError.Here().WithMessagef("%v is not a map", parsedPath[0:i])
+				} else {
+					return nil, PathNotMapError.Here().WithMessage("v is not a map")
 				}
-				return nil, PathNotMapError.Here().WithMessagef("%s is not a map", errPath)
 			}
-		}
-		if sliceIdx > -1 {
+		case int:
 			// slice index
 			out, _ = normalize(out, false, false, false)
 			if s, ok := out.([]interface{}); ok {
-				if l := len(s); l <= sliceIdx {
-					return nil, IndexOutOfBoundsError.Here().WithMessagef("Index out of bounds at %s (len = %v)", strings.Join(parts[0:i+1], "."), l)
+				if l := len(s); l <= t {
+					return nil, IndexOutOfBoundsError.Here().WithMessagef("Index out of bounds at %v (len = %v)", parsedPath[0:i+1], l)
 				} else {
-					out = s[sliceIdx]
+					out = s[t]
 				}
 			} else {
-				errPath := strings.Join(append(parts[0:i], part), ".")
-				if len(errPath) == 0 {
-					errPath = "v"
+				if i > 0 {
+					return nil, PathNotSliceError.Here().WithMessagef("%v is not a slice", parsedPath[0:i])
+				} else {
+					return nil, PathNotSliceError.Here().WithMessage("v is not a slice")
 				}
-				return nil, PathNotSliceError.Here().WithMessagef("%s is not a slice", errPath)
 			}
+		default:
+			panic(merry.Errorf("Unexpected type for parsed path element: %#v", part))
 		}
 	}
 	return out, nil
