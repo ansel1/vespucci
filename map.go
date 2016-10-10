@@ -411,6 +411,8 @@ func (p Path) String() string {
 	return buf.String()
 }
 
+type GetOptions NormalizeOptions
+
 // Extracts the value at path from v.
 // Path is in the form:
 //
@@ -424,6 +426,11 @@ func (p Path) String() string {
 //
 // `v` can be any primitive, map (must be keyed by string, but any value type), or slice, nested arbitrarily deep
 func Get(v interface{}, path string) (interface{}, error) {
+	return GetWithOpts(v, path, GetOptions{})
+}
+
+// GetwithOpts is like Get, but with options.
+func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, error) {
 	parsedPath, err := ParsePath(path)
 	if err != nil {
 		return nil, merry.Prepend(err, "Couldn't parse the path")
@@ -432,7 +439,10 @@ func Get(v interface{}, path string) (interface{}, error) {
 	for i, part := range parsedPath {
 		switch t := part.(type) {
 		case string:
-			out, _ = normalize(out, false, false, false)
+			out, err = NormalizeWithOptions(out, NormalizeOptions(opts))
+			if err != nil {
+				return nil, err
+			}
 			if m, ok := out.(map[string]interface{}); ok {
 				var present bool
 				if out, present = m[t]; !present {
@@ -447,7 +457,10 @@ func Get(v interface{}, path string) (interface{}, error) {
 			}
 		case int:
 			// slice index
-			out, _ = normalize(out, false, false, false)
+			out, err = NormalizeWithOptions(out, NormalizeOptions(opts))
+			if err != nil {
+				return nil, err
+			}
 			if s, ok := out.([]interface{}); ok {
 				if l := len(s); l <= t {
 					return nil, IndexOutOfBoundsError.Here().WithMessagef("Index out of bounds at %v (len = %v)", parsedPath[0:i+1], l)
