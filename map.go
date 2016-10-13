@@ -1,4 +1,4 @@
-// A set of utility functions for working with maps.
+// Package maps is a set of utility functions for working with maps.
 // Generally, maps and slices of any kind will work, but performance
 // is optimized for maps returned by json.Unmarshal(b, &interface{}).  If
 // all the maps are map[string]interface{}, and all the slices are
@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-// return a slice of the keys in the map
+// Keys returns a slice of the keys in the map
 func Keys(m map[string]interface{}) (keys []string) {
 	for key := range m {
 		keys = append(keys, key)
@@ -24,7 +24,7 @@ func Keys(m map[string]interface{}) (keys []string) {
 	return keys
 }
 
-// return a new map, which is the deep merge of m1 and m2.
+// Merge returns a new map, which is the deep merge of m1 and m2.
 // values in m2 override values in m1.
 // This recurses into nested slices and maps
 // Slices are merged simply by adding any m2 values which aren't
@@ -85,7 +85,7 @@ func sliceContains(s []interface{}, v interface{}) bool {
 	return false
 }
 
-// Applies a transformation function to each value in tree.
+// Transform applies a transformation function to each value in tree.
 // Values are normalized before being passed to the transformer function, the
 // equivalent of calling Normalize(Copies:false,Deep:false,Marshal:false).
 // Any maps and slices are passed to the transform function as the whole value
@@ -120,31 +120,37 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 	return v, err
 }
 
-// Returns true if m1 contains all the key paths as m2, and
-// the values at those paths are the equal.  I.E. returns
-// true if m2 is a subset of m1.
-// This will recurse into nested maps.
-// When comparing to slice values, it will return true if
-// slice 1 has at least one value which contains each of the`
-// values in slice 2.  It's kind of dumb though.  If slice 1
-// contains a single value, say a big map, which contains *all*
-// the values in slice 2, then this will return true.  In other words.
-// when a match in slice 1 is found, that item is *not* removed from
-// the search when matching the next value in slice 2.
-// Examples:
+// Contains tests whether v1 "contains" v2.  The notion of containment
+// is based on postgres' JSONB containment operators.
+//
+// A map v1 "contains" another map v2 if v1 has contains all the keys in v2, and
+// if the values in v2 are contained by the corresponding values in v1.
 //
 //     {"color":"red"} contains {}
 //     {"color":"red"} contains {"color":"red"}
 //     {"color":"red","flavor":"beef"} contains {"color":"red"}
 //     {"labels":{"color":"red","flavor":"beef"}} contains {"labels":{"flavor":"beef"}}
 //     {"tags":["red","green","blue"]} contains {"tags":["red","green"]}
-
-// This is what I mean about slice containment being a little simplistic:
 //
-//     {"resources":[{"type":"car","color":"red","wheels":4}]} contains {"resources":[{"type":"car"},{"color","red"},{"wheels":4}]}
+// A scalar value v1 contains value v2 if they are equal.
 //
-// That will return true, despite there being 3 items in contained slice and only one item in the containing slice.  The
-// one item in the containing slice matches each of the items in the contained slice.
+//     5 contains 5
+//     "red" contains "red"
+//
+// A slice v1 contains a slice v2 if all the values in v2 are contained by at
+// least one value in v1:
+//
+//     ["red","green"] contains ["red"]
+//     ["red"] contains ["red","red","red"]
+//     // In this case, the single value in v1 contains each of the values
+//     // in v2, so v1 contains v2
+//     [{"type":"car","color":"red","wheels":4}] contains [{"type":"car"},{"color","red"},{"wheels":4}]
+//
+// A slice v1 also can contain a *scalar* value v2:
+//
+//     ["red"] contains "red"
+//
+// A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}) bool {
 	v1, _ = normalize(v1, false, false, false)
 	v2, _ = normalize(v2, false, false, false)
@@ -170,38 +176,46 @@ func Contains(v1, v2 interface{}) bool {
 		}
 		return true
 	case []interface{}:
-		t2, isSlice := v2.([]interface{})
-		if !isSlice {
-			// v1 is a slice, but v2 isn't; v1 can't contain v2
-			return false
-		}
-		// first, normalize the values in v1, so we
-		// don't re-normalize them in each loop
-		t1copy := make([]interface{}, len(t1))
-		for i, value := range t1 {
-			t1copy[i], _ = normalize(value, false, false, false)
-		}
-		for _, val2 := range t2 {
-			found := false
-		Search:
-			for _, value := range t1copy {
-				if Contains(value, val2) {
-					found = true
-					break Search
+		switch t2 := v2.(type) {
+		case bool, nil, string, float64:
+			for _, el1 := range t1 {
+				el1, _ = normalize(el1, false, false, false)
+				if el1 == v2 {
+					return true
 				}
 			}
-			if !found {
-				// one of the values in v2 was not found in v1
-				return false
+			return false
+		case []interface{}:
+			// first, normalize the values in v1, so we
+			// don't re-normalize them in each loop
+			t1copy := make([]interface{}, len(t1))
+			for i, value := range t1 {
+				t1copy[i], _ = normalize(value, false, false, false)
 			}
+			for _, val2 := range t2 {
+				found := false
+			Search:
+				for _, value := range t1copy {
+					if Contains(value, val2) {
+						found = true
+						break Search
+					}
+				}
+				if !found {
+					// one of the values in v2 was not found in v1
+					return false
+				}
+			}
+			return true
+		default:
+			return false
 		}
-		return true
 	default:
 		return reflect.DeepEqual(v1, v2)
 	}
 }
 
-// returns true if trees share common key paths, but the values
+// Conflicts returns true if trees share common key paths, but the values
 // at those paths are not equal.
 // i.e. if the two maps were merged, no values would be overwritten
 // conflicts == !contains(v1, v2) && !excludes(v1, v2)
@@ -210,6 +224,7 @@ func Conflicts(m1, m2 map[string]interface{}) bool {
 	return !Contains(Merge(m1, m2), m1)
 }
 
+// NormalizeOptions are options for the Normalize function.
 type NormalizeOptions struct {
 	// Make copies of all maps and slices.  The result will not share
 	// any maps or slices with input value.
@@ -223,6 +238,7 @@ type NormalizeOptions struct {
 	Deep bool
 }
 
+// NormalizeWithOptions does the same as Normalize, but with options.
 func NormalizeWithOptions(v interface{}, opt NormalizeOptions) (interface{}, error) {
 	return normalize(v, opt.Copy, opt.Marshal, opt.Deep)
 }
@@ -337,7 +353,7 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 	return
 }
 
-// Recursively converts v1 into a tree of maps, slices, and primitives.
+// Normalize recursively converts v1 into a tree of maps, slices, and primitives.
 // The types in the result will be the types the json package uses for unmarshalling
 // into interface{}.  The rules are:
 //
@@ -352,13 +368,27 @@ func Normalize(v1 interface{}) (interface{}, error) {
 	return normalize(v1, false, true, true)
 }
 
+// PathNotFoundError indicates the requested path was not present in the value.
 var PathNotFoundError = merry.New("Path not found")
+
+// PathNotMapError indicates the value at the path is not a map.
 var PathNotMapError = merry.New("Path not map")
+
+// PathNotSliceError indicates the value at the path is not a slice.
 var PathNotSliceError = merry.New("Path not slice")
+
+// IndexOutOfBoundsError indicates the index doesn't exist in the slice.
 var IndexOutOfBoundsError = merry.New("Index out of bounds")
 
+// Path is a slice of either strings or slice indexes (ints).
 type Path []interface{}
 
+// ParsePath parses a string path into a Path slice.  String paths look
+// like:
+//
+//     user.name.first
+//     user.addresses[3].street
+//
 func ParsePath(path string) (Path, error) {
 	var parsedPath Path
 	parts := strings.Split(path, ".")
@@ -389,6 +419,9 @@ func ParsePath(path string) (Path, error) {
 	return parsedPath, nil
 }
 
+// String implements the Stringer interface.  It returns the string
+// representation of a Path.  Path.String() and ParsePath() are inversions
+// of each other.
 func (p Path) String() string {
 	buf := bytes.NewBuffer(nil)
 
@@ -411,9 +444,12 @@ func (p Path) String() string {
 	return buf.String()
 }
 
+// GetOptions are options to the Get operation.
+// Currently an alias for NormalizeOptions (the value is normalized before
+// the path is evaluated against it), but don't count on this alias.
 type GetOptions NormalizeOptions
 
-// Extracts the value at path from v.
+// Get extracts the value at path from v.
 // Path is in the form:
 //
 //     response.things[2].color.red
@@ -429,7 +465,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 	return GetWithOpts(v, path, GetOptions{})
 }
 
-// GetwithOpts is like Get, but with options.
+// GetWithOpts is like Get, but with options.
 func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, error) {
 	parsedPath, err := ParsePath(path)
 	if err != nil {
@@ -451,9 +487,8 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 			} else {
 				if i > 0 {
 					return nil, PathNotMapError.Here().WithMessagef("%v is not a map", parsedPath[0:i])
-				} else {
-					return nil, PathNotMapError.Here().WithMessage("v is not a map")
 				}
+				return nil, PathNotMapError.Here().WithMessage("v is not a map")
 			}
 		case int:
 			// slice index
@@ -464,15 +499,13 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 			if s, ok := out.([]interface{}); ok {
 				if l := len(s); l <= t {
 					return nil, IndexOutOfBoundsError.Here().WithMessagef("Index out of bounds at %v (len = %v)", parsedPath[0:i+1], l)
-				} else {
-					out = s[t]
 				}
+				out = s[t]
 			} else {
 				if i > 0 {
 					return nil, PathNotSliceError.Here().WithMessagef("%v is not a slice", parsedPath[0:i])
-				} else {
-					return nil, PathNotSliceError.Here().WithMessage("v is not a slice")
 				}
+				return nil, PathNotSliceError.Here().WithMessage("v is not a slice")
 			}
 		default:
 			panic(merry.Errorf("Unexpected type for parsed path element: %#v", part))
@@ -481,7 +514,7 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 	return out, nil
 }
 
-// returns true if v is:
+// Empty returns true if v is:
 //
 // 1. nil
 // 2. an empty string
@@ -493,7 +526,9 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 // returns false otherwise
 func Empty(v interface{}) bool {
 	// no op.  just means the value wasn't a type that supports Len()
-	defer func() { recover() }()
+	defer func() {
+		recover()
+	}()
 	switch t := v.(type) {
 	case bool, int, int8, int16, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
 		return false

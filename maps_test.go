@@ -97,6 +97,21 @@ func TestContains(t *testing.T) {
 			false,
 		},
 		{
+			[]string{"red", "green"},
+			"red",
+			true,
+		},
+		{
+			[]string{"red", "green"},
+			"blue",
+			false,
+		},
+		{
+			[]string{"red", "green"},
+			map[string]interface{}{"red": "green"},
+			false,
+		},
+		{
 			map[string]interface{}{"resource": map[string]interface{}{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": map[string]interface{}{"time": "night", "source": "east"}},
 			map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"smart", "loud"}}},
 			false,
@@ -109,6 +124,11 @@ func TestContains(t *testing.T) {
 		{
 			map[string]interface{}{"color": "green"},
 			map[string]interface{}{"color": "red"},
+			false,
+		},
+		{
+			map[string]interface{}{"color": "green"},
+			"color",
 			false,
 		},
 		{
