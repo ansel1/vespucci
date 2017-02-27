@@ -86,103 +86,93 @@ func bigNestedMaps(prefix string, nesting int) map[string]interface{} {
 
 func TestContains(t *testing.T) {
 	tests := []struct {
+		name     string
 		v1, v2   interface{}
 		expected bool
+		options  []ContainsOption
 	}{
-		{"red", "red", true},
-		{"red", "green", false},
+		{v1: "red", v2: "red", expected: true},
+		{v1: "red", v2: "green"},
 		{
-			[]string{"big", "loud"},
-			[]string{"smart", "loud"},
-			false,
+			v1: []string{"big", "loud"},
+			v2: []string{"smart", "loud"},
 		},
 		{
-			[]string{"red", "green"},
-			"red",
-			true,
+			v1:       []string{"red", "green"},
+			v2:       "red",
+			expected: true,
 		},
 		{
-			[]string{"red", "green"},
-			"blue",
-			false,
+			v1: []string{"red", "green"},
+			v2: "blue",
 		},
 		{
-			[]string{"red", "green"},
-			map[string]interface{}{"red": "green"},
-			false,
+			v1: []string{"red", "green"},
+			v2: map[string]interface{}{"red": "green"},
 		},
 		{
-			map[string]interface{}{"resource": map[string]interface{}{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": map[string]interface{}{"time": "night", "source": "east"}},
-			map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"smart", "loud"}}},
-			false,
+			v1: map[string]interface{}{"resource": map[string]interface{}{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": map[string]interface{}{"time": "night", "source": "east"}},
+			v2: map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"smart", "loud"}}},
 		},
 		{
-			map[string]interface{}{"color": "red"},
-			map[string]interface{}{"color": "red"},
-			true,
+			v1:       map[string]interface{}{"color": "red"},
+			v2:       map[string]interface{}{"color": "red"},
+			expected: true,
 		},
 		{
-			map[string]interface{}{"color": "green"},
-			map[string]interface{}{"color": "red"},
-			false,
+			v1: map[string]interface{}{"color": "green"},
+			v2: map[string]interface{}{"color": "red"},
 		},
 		{
-			map[string]interface{}{"color": "green"},
-			"color",
-			false,
+			v1: map[string]interface{}{"color": "green"},
+			v2: "color",
 		},
 		{
-			nil,
-			nil,
-			true,
+			expected: true,
 		},
 		{
-			nil,
-			"red",
-			false,
+			v2:       "red",
+			expected: false,
 		},
 		{
-			"red",
-			"red",
-			true,
+			v1:       "red",
+			v2:       "red",
+			expected: true,
 		},
 		{
-			"red",
-			"green",
-			false,
+			v1: "red",
+			v2: "green",
 		},
 		{
-			true,
-			true,
-			true,
+			v1:       true,
+			v2:       true,
+			expected: true,
 		},
 		{
-			true,
-			false,
-			false,
+			v1: true,
+			v2: false,
 		},
 		{
-			5,
-			float64(5),
-			true,
+			v1:       5,
+			v2:       float64(5),
+			expected: true,
 		},
 		{
-			map[string]interface{}{"color": "green", "flavor": "beef"},
-			map[string]interface{}{"color": "green"},
-			true,
+			v1:       map[string]interface{}{"color": "green", "flavor": "beef"},
+			v2:       map[string]interface{}{"color": "green"},
+			expected: true,
 		},
 		{
-			map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
-			map[string]interface{}{"color": "green", "tags": []string{"hot"}},
-			true,
+			v1:       map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
+			v2:       map[string]interface{}{"color": "green", "tags": []string{"hot"}},
+			expected: true,
 		},
 		{
-			map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
-			map[string]interface{}{"color": "green", "tags": []string{"cool"}},
-			false,
+			v1: map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
+			v2: map[string]interface{}{"color": "green", "tags": []string{"cool"}},
 		},
 		{
-			map[string]interface{}{
+			v1: map[string]interface{}{
 				"resource": map[string]interface{}{
 					"id":    1,
 					"color": "red",
@@ -199,7 +189,7 @@ func TestContains(t *testing.T) {
 					"groups": []string{"officers", "gentlemen"},
 				},
 			},
-			map[string]interface{}{
+			v2: map[string]interface{}{
 				"resource": map[string]interface{}{
 					"color": "red",
 					"size":  6,
@@ -213,10 +203,10 @@ func TestContains(t *testing.T) {
 					"groups": []interface{}{"officers"},
 				},
 			},
-			true,
+			expected: true,
 		},
 		{
-			map[string]interface{}{
+			v1: map[string]interface{}{
 				"resource": map[string]interface{}{
 					"id":    1,
 					"color": "red",
@@ -233,17 +223,80 @@ func TestContains(t *testing.T) {
 					"groups": []string{"officers", "gentlemen"},
 				},
 			},
-			map[string]interface{}{
+			v2: map[string]interface{}{
 				"resource": map[string]interface{}{
 					"size": 7,
 				},
 			},
-			false,
+		},
+		{
+			v1:       "The quick brown fox",
+			v2:       "quick brown",
+			expected: false,
+		},
+		{
+			v1:       "The quick brown fox",
+			v2:       "quick brown",
+			options:  []ContainsOption{StringContains()},
+			expected: true,
+		},
+		{
+			v1:       map[string]interface{}{"story": "The quick brown fox"},
+			v2:       map[string]interface{}{"story": "quick brown"},
+			expected: false,
+		},
+		{
+			v1:       map[string]interface{}{"story": "The quick brown fox"},
+			v2:       map[string]interface{}{"story": "quick brown"},
+			options:  []ContainsOption{StringContains()},
+			expected: true,
+		},
+		{
+			v1:       []string{"The quick brown fox"},
+			v2:       []string{"quick brown"},
+			expected: false,
+		},
+		{
+			v1:       []string{"The quick brown fox"},
+			v2:       []string{"quick brown"},
+			options:  []ContainsOption{StringContains()},
+			expected: true,
+		},
+		{
+			v1:       map[string]interface{}{"color": "blue"},
+			v2:       map[string]interface{}{"color": ""},
+			expected: false,
+		},
+		{
+			v1:       map[string]interface{}{"color": "blue"},
+			v2:       map[string]interface{}{"color": nil},
+			expected: false,
+		},
+		{
+			v1:       map[string]interface{}{"color": "blue"},
+			v2:       map[string]interface{}{"color": ""},
+			options:  []ContainsOption{EmptyMapValuesMatchAny()},
+			expected: true,
+		},
+		{
+			v1:       map[string]interface{}{"color": "blue"},
+			v2:       map[string]interface{}{"color": nil},
+			options:  []ContainsOption{EmptyMapValuesMatchAny()},
+			expected: true,
+		},
+		{
+			name:     "emptymapvaluemustmatchtype",
+			v1:       map[string]interface{}{"color": "blue"},
+			v2:       map[string]interface{}{"color": 0},
+			options:  []ContainsOption{EmptyMapValuesMatchAny()},
+			expected: false,
 		},
 	}
 
 	for _, test := range tests {
-		assert.Equal(t, test.expected, Contains(test.v1, test.v2), pp.Sprintln("m1", test.v1, "m2", test.v2))
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, Contains(test.v1, test.v2, test.options...), pp.Sprintln("m1", test.v1, "m2", test.v2))
+		})
 	}
 }
 

@@ -120,6 +120,64 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 	return v, err
 }
 
+type containsOptions struct {
+	stringContains      bool
+	stringMatches       bool
+	matchEmptyMapValues bool
+}
+
+// ContainsOption is an option which modifies the behavior of the Contains() function
+type ContainsOption func(*containsOptions)
+
+// EmptyMapValuesMatchAny is a ContainsOption which allows looser matching of map values.
+// If set, when matching map entries, an entry in v2's map will match an entry in v1's map if:
+//
+// - the key matches AND
+// - the value in v1 contains the value in v2
+//   OR the value in v2 is nil
+//   OR the value in v2 is the zero value of the type of v1's value
+//
+// This is convenient when testing whether a struct contains another struct.  Structs are normalized
+// by marshalling them to JSON.  Fields which don't have the `omitempty` option will appear in the
+// normalized v2 value as map keys with zero values.  Using this option will allow that to match.
+//
+// This option can also be used to test for the presence of keys in v1 without needing to test the value:
+//
+//     v1 := map[string]interface{}{"color":"blue"}
+//     v2 := map[string]interface{}{"color":nil}
+//     Contains(v1, v2)  // false
+//     Contains(v1, v2, EmptyMapValuesMatchAny()) // true
+//     v1 := map[string]interface{}{}
+//     Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because v1 doesn't have "color" key
+//
+// Another use is testing the general type of the value:
+//
+//     v1 := map[string]interface{}{"size":5}
+//     v2 := map[string]interface{}{"size":0}
+//     Contains(v1, v2)  // false
+//     Contains(v1, v2, EmptyMapValuesMatchAny()) // true
+//     v2 := map[string]interface{}{"size":""}
+//     Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because type of value doesn't match (v1: number, v2: string)
+//
+func EmptyMapValuesMatchAny() ContainsOption {
+	return func(o *containsOptions) {
+		o.matchEmptyMapValues = true
+	}
+}
+
+// StringContains is a ContainsOption which uses strings.Contains(v1, v2) to test
+// for string containment.
+//
+// Without this option, strings (like other primitive values) must match exactly.
+//
+//     Contains("brown fox", "fox") // false
+//     Contains("brown fox", "fox", StringContains()) // true
+func StringContains() ContainsOption {
+	return func(o *containsOptions) {
+		o.stringContains = true
+	}
+}
+
 // Contains tests whether v1 "contains" v2.  The notion of containment
 // is based on postgres' JSONB containment operators.
 //
@@ -151,12 +209,30 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 //     ["red"] contains "red"
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
-func Contains(v1, v2 interface{}) bool {
+func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
+	opt := containsOptions{}
+	for _, o := range options {
+		o(&opt)
+	}
+	return contains(v1, v2, opt)
+}
+
+func contains(v1, v2 interface{}, opt containsOptions) bool {
 	v1, _ = normalize(v1, false, false, false)
 	v2, _ = normalize(v2, false, false, false)
 
 	switch t1 := v1.(type) {
-	case bool, nil, string, float64:
+	case string:
+		switch t2 := v2.(type) {
+		case string:
+			if opt.stringContains {
+				return strings.Contains(t1, t2)
+			}
+			return v1 == v2
+		default:
+			return v1 == v2
+		}
+	case bool, nil, float64:
 		return v1 == v2
 	case map[string]interface{}:
 		t2, isMap := v2.(map[string]interface{})
@@ -168,9 +244,23 @@ func Contains(v1, v2 interface{}) bool {
 			// if t2 is bigger than t1, then t1 can't contain t2
 			return false
 		}
+	nextkey:
 		for key, val2 := range t2 {
 			val1, present := t1[key]
-			if !present || !Contains(val1, val2) {
+			if !present {
+				return false
+			}
+
+			if opt.matchEmptyMapValues {
+				if val2 == nil {
+					break nextkey
+				}
+				type1 := reflect.TypeOf(val1)
+				if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), val2) {
+					break nextkey
+				}
+			}
+			if !contains(val1, val2, opt) {
 				return false
 			}
 		}
@@ -196,7 +286,7 @@ func Contains(v1, v2 interface{}) bool {
 				found := false
 			Search:
 				for _, value := range t1copy {
-					if Contains(value, val2) {
+					if contains(value, val2, opt) {
 						found = true
 						break Search
 					}
