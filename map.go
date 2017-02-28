@@ -368,8 +368,17 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 	default:
 		// if v explicitly supports json marshalling, just skip to that.
 		if marshal {
-			if m, ok := v.(json.Marshaler); ok {
+			switch m := v.(type) {
+			case json.Marshaler:
 				return slowNormalize(m)
+			case json.RawMessage:
+				// This handles a special case for golang < 1.8
+				// Below 1.8, *json.RawMessage implemented json.Marshaler, but
+				// json.Marshaler did not (weird, since it's based on a slice type, so
+				// it can already be nil)
+				// This was fixed in 1.8, so as of 1.8, we'll never hit this case (the
+				// first case will be hit)
+				return slowNormalize(&m)
 			}
 		}
 		rv := reflect.ValueOf(v)
