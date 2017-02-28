@@ -366,6 +366,12 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			return
 		}
 	default:
+		// if v explicitly supports json marshalling, just skip to that.
+		if marshal {
+			if m, ok := v.(json.Marshaler); ok {
+				return slowNormalize(m)
+			}
+		}
 		rv := reflect.ValueOf(v)
 		switch {
 		case rv.Kind() == reflect.Map && rv.Type().Key().Kind() == reflect.String:
@@ -385,14 +391,7 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			v2 = s
 		case marshal:
 			// marshal/unmarshal
-			var b []byte
-			b, err = json.Marshal(v)
-			if err != nil {
-				return
-			}
-			v2 = nil
-			err = json.Unmarshal(b, &v2)
-			return
+			return slowNormalize(v)
 		default:
 			// return value unchanged
 			return
@@ -443,6 +442,17 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 	return
 }
 
+func slowNormalize(v interface{}) (interface{}, error) {
+	var b []byte
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var v2 interface{}
+	err = json.Unmarshal(b, &v2)
+	return v2, err
+}
+
 // Normalize recursively converts v1 into a tree of maps, slices, and primitives.
 // The types in the result will be the types the json package uses for unmarshalling
 // into interface{}.  The rules are:
@@ -455,7 +465,7 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 //
 // Values in v1 will be modified in place if possible
 func Normalize(v1 interface{}) (interface{}, error) {
-	return normalize(v1, false, true, true)
+	return normalize(v1, true, true, true)
 }
 
 // PathNotFoundError indicates the requested path was not present in the value.

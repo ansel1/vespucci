@@ -429,27 +429,44 @@ type Widget struct {
 
 func TestNormalize(t *testing.T) {
 	tests := []struct {
+		name    string
 		in, out interface{}
+		opts    *NormalizeOptions
 	}{
 		// basic no-op types of cases
-		{5, float64(5)},
-		{"red", "red"},
-		{nil, nil},
-		{float64(10), float64(10)},
-		{float32(12), float64(12)},
-		{true, true},
-		{map[string]interface{}{"red": "green"}, map[string]interface{}{"red": "green"}},
-		{[]interface{}{"red", 4}, []interface{}{"red", float64(4)}},
-		{[]string{"red", "green"}, []interface{}{"red", "green"}},
+		{in: 5, out: float64(5)},
+		{in: "red", out: "red"},
+		{},
+		{in: float64(10), out: float64(10)},
+		{in: float32(12), out: float64(12)},
+		{in: true, out: true},
+		{in: map[string]interface{}{"red": "green"}, out: map[string]interface{}{"red": "green"}},
+		{in: []interface{}{"red", 4}, out: []interface{}{"red", float64(4)}},
+		{in: []string{"red", "green"}, out: []interface{}{"red", "green"}},
 		// hits the marshaling path
-		{&Widget{5, "red"}, map[string]interface{}{"size": float64(5), "color": "red"}},
+		{in: &Widget{5, "red"}, out: map[string]interface{}{"size": float64(5), "color": "red"}},
 		// marshaling might occur deep
-		{map[string]interface{}{"widget": &Widget{5, "red"}}, map[string]interface{}{"widget": map[string]interface{}{"size": float64(5), "color": "red"}}},
+		{in: map[string]interface{}{"widget": &Widget{5, "red"}}, out: map[string]interface{}{"widget": map[string]interface{}{"size": float64(5), "color": "red"}}},
+		{
+			name: "marshaller",
+			in:   json.RawMessage(`{"color":"blue"}`),
+			out:  map[string]interface{}{"color": "blue"},
+			opts: &NormalizeOptions{Marshal: true},
+		},
 	}
 	for _, test := range tests {
-		out, err := Normalize(test.in)
-		require.NoError(t, err)
-		require.Equal(t, test.out, out, "in: %v", pp.Sprint(test.in))
+		t.Run(test.name, func(t *testing.T) {
+			var out interface{}
+			var err error
+			if test.opts != nil {
+				out, err = NormalizeWithOptions(test.in, *test.opts)
+			} else {
+				out, err = Normalize(test.in)
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, test.out, out, "in: %v", pp.Sprint(test.in))
+		})
 	}
 }
 
@@ -637,4 +654,31 @@ func TestParsePath(t *testing.T) {
 	}
 
 	assert.Equal(t, "a.b[3]", Path{"a", "b", 3, "c", 4}[0:3].String())
+}
+
+func BenchmarkMarshal(b *testing.B) {
+	s := struct {
+		Map   map[string]string
+		Slice []string
+	}{
+		Map: map[string]string{
+			"color": "blue",
+		},
+		Slice: []string{"green", "yellow"},
+	}
+	for i := 0; i < b.N; i++ {
+		Normalize(s)
+	}
+}
+
+func BenchmarkAvoidMarshal(b *testing.B) {
+	s := map[string]interface{}{
+		"Map": map[string]string{
+			"color": "blue",
+		},
+		"Slice": []string{"green", "yellow"},
+	}
+	for i := 0; i < b.N; i++ {
+		Normalize(s)
+	}
 }
