@@ -298,6 +298,21 @@ func TestContains(t *testing.T) {
 			assert.Equal(t, test.expected, Contains(test.v1, test.v2, test.options...), pp.Sprintln("m1", test.v1, "m2", test.v2))
 		})
 	}
+
+	t.Run("trace", func(t *testing.T) {
+		v1 := map[string]interface{}{"color": "red"}
+		v2 := map[string]interface{}{"color": "red"}
+		var trace string
+		Contains(v1, v2, Trace(&trace))
+		assert.Empty(t, trace, "trace should be empty if contains returned true")
+		v2["color"] = "blue"
+		Contains(v1, v2, Trace(&trace))
+		assert.NotEmpty(t, trace, "trace should not be empty if contains returned false")
+		assert.NotPanics(t, func() {
+			Contains(v1, v2, Trace(nil))
+		})
+	})
+
 }
 
 func TestConflicts(t *testing.T) {

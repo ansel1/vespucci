@@ -124,6 +124,21 @@ type containsOptions struct {
 	stringContains      bool
 	stringMatches       bool
 	matchEmptyMapValues bool
+	trace               *string
+	tracing             bool
+	traceDepth          int
+	traceBuf            *bytes.Buffer
+}
+
+func (c *containsOptions) prependTraceMsg(s string) {
+	if c.trace != nil {
+		s = strings.Repeat("-", c.traceDepth) + "> " + s
+		if *c.trace == "" {
+			*c.trace = s
+		} else {
+			*c.trace = s + "\n" + *c.trace
+		}
+	}
 }
 
 // ContainsOption is an option which modifies the behavior of the Contains() function
@@ -178,6 +193,23 @@ func StringContains() ContainsOption {
 	}
 }
 
+// Trace sets `s` to a string describing the path to the values where containment was false.  Helps
+// debugging why one value doesn't contain another.  Sample output:
+//
+//     -> v1: map[time:2017-03-03T14:08:30.097698864-05:00]
+//     -> v2: map[time:0001-01-01T00:00:00Z]
+//     -> "time"
+//     --> v1: 2017-03-03T14:08:30.097698864-05:00
+//     --> v2: 0001-01-01T00:00:00Z
+//
+// If `s` is nil, it does nothing.
+func Trace(s *string) ContainsOption {
+	return func(o *containsOptions) {
+		o.tracing = true
+		o.trace = s
+	}
+}
+
 // Contains tests whether v1 "contains" v2.  The notion of containment
 // is based on postgres' JSONB containment operators.
 //
@@ -217,9 +249,20 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 	return contains(v1, v2, opt)
 }
 
-func contains(v1, v2 interface{}, opt containsOptions) bool {
+func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
 	v1, _ = normalize(v1, false, false, false)
 	v2, _ = normalize(v2, false, false, false)
+
+	if opt.tracing {
+		opt.traceDepth++
+		defer func() {
+			if !b {
+				opt.prependTraceMsg(fmt.Sprintf("v2: %+v", v2))
+				opt.prependTraceMsg(fmt.Sprintf("v1: %+v", v1))
+
+			}
+		}()
+	}
 
 	switch t1 := v1.(type) {
 	case string:
@@ -246,6 +289,7 @@ func contains(v1, v2 interface{}, opt containsOptions) bool {
 		}
 	nextkey:
 		for key, val2 := range t2 {
+
 			val1, present := t1[key]
 			if !present {
 				return false
@@ -253,14 +297,17 @@ func contains(v1, v2 interface{}, opt containsOptions) bool {
 
 			if opt.matchEmptyMapValues {
 				if val2 == nil {
-					break nextkey
+					continue nextkey
 				}
 				type1 := reflect.TypeOf(val1)
 				if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), val2) {
-					break nextkey
+					continue nextkey
 				}
 			}
 			if !contains(val1, val2, opt) {
+				if opt.tracing {
+					opt.prependTraceMsg(fmt.Sprintf("%#v", key))
+				}
 				return false
 			}
 		}
