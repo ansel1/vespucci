@@ -98,6 +98,20 @@ func TestContains(t *testing.T) {
 			v2: []string{"smart", "loud"},
 		},
 		{
+			v1:       []string{"big", "loud"},
+			v2:       []string{"big"},
+			expected: true,
+		},
+		{
+			v1:       []string{"big", "loud", "high"},
+			v2:       []string{"big", "loud"},
+			expected: true,
+		},
+		{
+			v1: []string{"big", "loud", "high"},
+			v2: []string{"big", "rough"},
+		},
+		{
 			v1:       []string{"red", "green"},
 			v2:       "red",
 			expected: true,
