@@ -600,11 +600,6 @@ func (p Path) String() string {
 	return buf.String()
 }
 
-// GetOptions are options to the Get operation.
-// Currently an alias for NormalizeOptions (the value is normalized before
-// the path is evaluated against it), but don't count on this alias.
-type GetOptions NormalizeOptions
-
 // Get extracts the value at path from v.
 // Path is in the form:
 //
@@ -618,11 +613,6 @@ type GetOptions NormalizeOptions
 //
 // `v` can be any primitive, map (must be keyed by string, but any value type), or slice, nested arbitrarily deep
 func Get(v interface{}, path string) (interface{}, error) {
-	return GetWithOpts(v, path, GetOptions{})
-}
-
-// GetWithOpts is like Get, but with options.
-func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, error) {
 	parsedPath, err := ParsePath(path)
 	if err != nil {
 		return nil, merry.Prepend(err, "Couldn't parse the path")
@@ -631,7 +621,7 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 	for i, part := range parsedPath {
 		switch t := part.(type) {
 		case string:
-			out, err = NormalizeWithOptions(out, NormalizeOptions(opts))
+			out, err = NormalizeWithOptions(out, NormalizeOptions{Marshal: true})
 			if err != nil {
 				return nil, err
 			}
@@ -648,7 +638,7 @@ func GetWithOpts(v interface{}, path string, opts GetOptions) (interface{}, erro
 			}
 		case int:
 			// slice index
-			out, err = NormalizeWithOptions(out, NormalizeOptions(opts))
+			out, err = NormalizeWithOptions(out, NormalizeOptions{Marshal: true})
 			if err != nil {
 				return nil, err
 			}

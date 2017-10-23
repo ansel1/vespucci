@@ -499,24 +499,6 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
-func TestGetWithOpts(t *testing.T) {
-	tests := []struct {
-		v, out interface{}
-		path   string
-	}{
-		{struct {
-			Color string
-		}{
-			Color: "red",
-		}, "red", "Color"},
-	}
-	for _, test := range tests {
-		out, err := GetWithOpts(test.v, test.path, GetOptions{Marshal: true})
-		assert.NoError(t, err)
-		assert.Equal(t, test.out, out)
-	}
-}
-
 func TestGet(t *testing.T) {
 	tests := []struct {
 		v, out interface{}
