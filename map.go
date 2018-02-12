@@ -9,6 +9,7 @@ package maps
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/ansel1/merry"
 	"reflect"
@@ -24,27 +25,21 @@ func Keys(m map[string]interface{}) (keys []string) {
 	return keys
 }
 
-// Merge returns a new map, which is the deep merge of m1 and m2.
-// values in m2 override values in m1.
-// This recurses into nested slices and maps
-// Slices are merged simply by adding any m2 values which aren't
-// already in m1's slice.  This won't do anything fancy with
+// Merge returns a new map, which is the deep merge of the
+// normalized values of v1 and v2.
+//
+// Values in v2 override values in v1.
+//
+// Slices are merged simply by adding any v2 values which aren't
+// already in v1's slice.  This won't do anything fancy with
 // slices that have duplicate values.  Order is ignored.  E.g.:
 //
 //    [5, 6, 7] + [5, 5, 5, 4] = [5, 6, 7, 4]
 //
-// All values in the result will be normalized according to the following
-// rules:
-//
-// 1. All maps with string keys will be converted into map[string]interface{}
-// 2. All slices will be converted to []interface{}
-// 3. All primitive numeric types will be converted into float64
-// 4. All other types will not be converted, and will not be merged.  v2's value will just overwrite v1's
-//
-// New copies of all maps and slices are made, so v1 and v2 will not be modified.
+// The return value is a copy.  v1 and v2 are not modified.
 func Merge(v1, v2 interface{}) interface{} {
-	v1, _ = normalize(v1, true, false, true)
-	v2, _ = normalize(v2, true, false, true)
+	v1, _ = normalize(v1, true, true, true)
+	v2, _ = normalize(v2, true, true, true)
 	switch t1 := v1.(type) {
 	case map[string]interface{}:
 		if t2, isMap := v2.(map[string]interface{}); isMap {
@@ -86,37 +81,54 @@ func sliceContains(s []interface{}, v interface{}) bool {
 }
 
 // Transform applies a transformation function to each value in tree.
-// Values are normalized before being passed to the transformer function, the
-// equivalent of calling Normalize(Copies:false,Deep:false,Marshal:false).
+// Values are normalized before being passed to the transformer function.
 // Any maps and slices are passed to the transform function as the whole value
 // first, then each child value of the map/slice is passed to the transform
 // function.
+//
 // The value returned by the transformer will replace the original value.
-// If the transform function returns a map[string]interface{} or []interface{}, Transform()
-// will recurse into them.
+//
+// If the transform function returns a non-primitive value, it will recurse into the new value.
+//
+// If the transformer function returns the error ErrStop, the process will abort with no error.
 func Transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
-	v, _ = normalize(v, false, false, false)
+	v, err := transform(v, transformer)
+	if err == ErrStop {
+		return v, nil
+	}
+	return v, err
+}
+
+// ErrStop can be returned by transform functions to end recursion early.  The Transform function will
+// not return an error.
+var ErrStop = errors.New("stop")
+
+func transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
+	v, _ = normalize(v, false, true, false)
 	var err error
 	v, err = transformer(v)
 	if err != nil {
 		return v, err
 	}
+	// normalize again, in case the transformer function altered v
+	v, _ = normalize(v, false, true, false)
 	switch t := v.(type) {
 	case map[string]interface{}:
 		for key, value := range t {
-			t[key], err = Transform(value, transformer)
+			t[key], err = transform(value, transformer)
 			if err != nil {
 				break
 			}
 		}
 	case []interface{}:
 		for i, value := range t {
-			t[i], err = Transform(value, transformer)
+			t[i], err = transform(value, transformer)
 			if err != nil {
 				break
 			}
 		}
 	}
+
 	return v, err
 }
 
@@ -246,12 +258,12 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 	for _, o := range options {
 		o(&opt)
 	}
+	v1, _ = normalize(v1, false, true, true)
+	v2, _ = normalize(v2, false, true, true)
 	return contains(v1, v2, opt)
 }
 
 func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
-	v1, _ = normalize(v1, false, false, false)
-	v2, _ = normalize(v2, false, false, false)
 
 	if opt.tracing {
 		opt.traceDepth++
@@ -299,6 +311,7 @@ func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
 				if val2 == nil {
 					continue nextkey
 				}
+
 				type1 := reflect.TypeOf(val1)
 				if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), val2) {
 					continue nextkey
@@ -348,6 +361,7 @@ func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
 			return false
 		}
 	default:
+		// since we deeply normalized both values, we should not hit this.
 		return reflect.DeepEqual(v1, v2)
 	}
 }
@@ -611,7 +625,17 @@ func (p Path) String() string {
 //     if merry.Is(err, maps.PathNotFoundError) {
 //       ...
 //
-// `v` can be any primitive, map (must be keyed by string, but any value type), or slice, nested arbitrarily deep
+// Returns PathNotFoundError if the next key in the path is not found.
+//
+// Returns PathNotMapError if evaluating a key against a value which is not
+// a map (e.g. a slice or a primitive value, against
+// which we can't evaluate a key name).
+//
+// Returns IndexOutOfBoundsError if evaluating a slice index against a
+// slice value, and the index is out of bounds.
+//
+// Returns PathNotSliceError if evaluating a slice index against a value which
+// isn't a slice.
 func Get(v interface{}, path string) (interface{}, error) {
 	parsedPath, err := ParsePath(path)
 	if err != nil {
@@ -621,7 +645,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 	for i, part := range parsedPath {
 		switch t := part.(type) {
 		case string:
-			out, err = NormalizeWithOptions(out, NormalizeOptions{Marshal: true})
+			out, err = normalize(out, false, true, false)
 			if err != nil {
 				return nil, err
 			}
@@ -638,7 +662,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 			}
 		case int:
 			// slice index
-			out, err = NormalizeWithOptions(out, NormalizeOptions{Marshal: true})
+			out, err = normalize(out, false, true, false)
 			if err != nil {
 				return nil, err
 			}
@@ -660,26 +684,57 @@ func Get(v interface{}, path string) (interface{}, error) {
 	return out, nil
 }
 
-// Empty returns true if v is:
+// Empty returns true if v is nil, empty, or a zero value.
 //
-// 1. nil
-// 2. an empty string
-// 3. an empty slice
-// 4. an empty map
-// 5. an empty array
-// 6. an empty channel
+// If v is a pointer, it is empty if the pointer is nil or invalid, but not
+// empty if it points to a value, even if that value is zero.  For example:
 //
-// returns false otherwise
+//     Empty(0)  // true
+//     i := 0
+//     Empty(&i) // false
+//     Empty(Widget{}) // true, zero value
+//     Empty(&Widget{}) // false, non-nil pointer
+//
+// Maps, slices, arrays, and channels are considered empty if their
+// length is zero.
+//
+// Strings are empty if they contain nothing but whitespace.
 func Empty(v interface{}) bool {
-	// no op.  just means the value wasn't a type that supports Len()
-	defer func() {
-		recover()
-	}()
 	switch t := v.(type) {
-	case bool, int, int8, int16, int32, int64, float32, float64, uint, uint8, uint16, uint32, uint64:
-		return false
 	case nil:
 		return true
+	case bool:
+		return !t // false is empty
+	case int:
+		return t == 0
+	case int8:
+		return t == 0
+	case int16:
+		return t == 0
+	case int32:
+		return t == 0
+	case int64:
+		return t == 0
+	case float32:
+		return t == 0
+	case float64:
+		return t == 0
+	case uint:
+		return t == 0
+	case uint8:
+		return t == 0
+	case uint16:
+		return t == 0
+	case uint32:
+		return t == 0
+	case uint64:
+		return t == 0
+	case complex64:
+		return t == 0
+	case complex128:
+		return t == 0
+	case uintptr:
+		return t == 0
 	case string:
 		return len(strings.TrimSpace(t)) == 0
 	case map[string]interface{}:
@@ -688,13 +743,21 @@ func Empty(v interface{}) bool {
 		return len(t) == 0
 	default:
 		rv := reflect.ValueOf(v)
-		if rv.IsNil() {
-			// handle case of (*Widget)(nil)
+		switch rv.Kind() {
+		case reflect.Invalid:
 			return true
+		case reflect.Array, reflect.Chan, reflect.Map, reflect.Slice:
+			return rv.Len() == 0
+		case reflect.Func:
+			return false
+		case reflect.Struct:
+			return rv.Interface() == reflect.Zero(rv.Type()).Interface()
+		case reflect.UnsafePointer:
+			return false
+		case reflect.Ptr:
+			return !rv.IsValid() || rv.IsNil()
+		default:
+			panic(fmt.Sprintf("kind %v should have been handled before this", rv.Kind().String()))
 		}
-		if rv.Kind() == reflect.Ptr {
-			return Empty(rv.Elem())
-		}
-		return reflect.ValueOf(v).Len() == 0
 	}
 }

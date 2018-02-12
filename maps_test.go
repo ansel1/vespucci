@@ -539,24 +539,63 @@ func TestGet(t *testing.T) {
 	}
 }
 
+type holder struct {
+	i interface{}
+}
+
 func TestEmpty(t *testing.T) {
 	var ptr *Widget
+	var nilPtr *Widget
+	nilPtr = nil
 	emptyTests := []interface{}{
 		nil, "", "  ", map[string]interface{}{},
 		[]interface{}{}, map[string]string{},
-		[]string{}, ptr, (*Widget)(nil),
+		[]string{},
+		ptr,
+		(*Widget)(nil),
+		nilPtr,
+		[0]string{},
+		false,
+		0,
+		int8(0),
+		int16(0),
+		int32(0),
+		int64(0),
+		float32(0),
+		float64(0),
+		uint(0),
+		uint8(0),
+		uint16(0),
+		uint32(0),
+		uint64(0),
+		uintptr(0),
+		complex64(0),
+		complex128(0),
+		Widget{},
+
+		make(chan string),
+		holder{},
 	}
 	for _, v := range emptyTests {
 		assert.True(t, Empty(v), "v = %#v", v)
 	}
 	notEmptyTests := []interface{}{
-		5, float64(5), true, false,
+		5, float64(5), true,
 		"asdf", " asdf ", map[string]interface{}{"color": "red"},
 		map[string]string{"color": "red"}, []interface{}{"color", "red"},
-		[]string{"green", "red"}, Widget{}, &Widget{},
+		[]string{"green", "red"}, &Widget{Color: "blue"}, Widget{Color: "red"},
+		func() {}, &Widget{},
+		holder{i: Widget{}},
 	}
 	for _, v := range notEmptyTests {
 		assert.False(t, Empty(v), "v = %#v", v)
+	}
+}
+
+func BenchmarkEmpty(b *testing.B) {
+	var w Widget
+	for i := 0; i < b.N; i++ {
+		Empty(w)
 	}
 }
 
