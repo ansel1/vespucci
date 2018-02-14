@@ -1,9 +1,9 @@
 language: go
 
 before_script:
+  - dep ensure
   - make tools
 
 go:
-  - 1.7.x
-  - 1.8.x
+  - 1.9.x
   - tip
