@@ -1,8 +1,8 @@
 language: go
 
 before_script:
-  - dep ensure
   - make tools
+  - dep ensure
 
 go:
   - 1.9.x
