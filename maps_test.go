@@ -344,7 +344,7 @@ func TestContains(t *testing.T) {
 		},
 		{
 			name:     "timezones",
-			v1:       map[string]interface{}{"t": t1},
+			v1:       map[string]interface{}{"t": t1.In(time.FixedZone("test", -3))},
 			v2:       map[string]interface{}{"t": t1.UTC()},
 			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, false)},
 			expected: false,
