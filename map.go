@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Keys returns a slice of the keys in the map
@@ -137,6 +138,9 @@ type containsOptions struct {
 	stringMatches       bool
 	matchEmptyMapValues bool
 	trace               *string
+	parseDates          bool
+	roundDates          time.Duration
+	stripTimeZone       bool
 }
 
 // ContainsOption is an option which modifies the behavior of the Contains() function
@@ -175,6 +179,24 @@ type ContainsOption func(*containsOptions)
 func EmptyMapValuesMatchAny() ContainsOption {
 	return func(o *containsOptions) {
 		o.matchEmptyMapValues = true
+	}
+}
+
+// ParseDates enables special processing for date values.  Contains typically marshals time.Time values
+// to a string before comparison.  This means comparisons of time.Time values will not account for
+// zero values, ignoring time zones, rounding times to a nearest precision, etc.
+//
+// When ParseDates is specified, after the values are normalized to strings, the code will attempt
+// to parse any string values back into time.Time values.  This allows correct processing of
+// the time.Time zero values.
+//
+// If rounding is > 0, times will be rounded.  If ignoreTimeZone is true, the location data will
+// be stripped off the time values before comparison.
+func ParseDates(rounding time.Duration, ignoreTimeZone bool) ContainsOption {
+	return func(o *containsOptions) {
+		o.parseDates = true
+		o.roundDates = rounding
+		o.stripTimeZone = ignoreTimeZone
 	}
 }
 
@@ -246,6 +268,40 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 
 	v1, _ = normalize(v1, false, true, true)
 	v2, _ = normalize(v2, false, true, true)
+
+	// when this option is set, we essentially undo the JSON-ification of date values, parsing
+	// them back into time.Time.  We then do rounding, and can do omitempty style processing
+	// on them.
+	if ctx.parseDates {
+		walkFunc := func(in interface{}) (i interface{}, e error) {
+			if s, ok := in.(string); ok {
+				t, err := time.Parse(time.RFC3339, s)
+				if err == nil {
+					if t.IsZero() && ctx.matchEmptyMapValues {
+						return nil, nil
+					}
+					if ctx.roundDates > 0 {
+						t = t.Round(ctx.roundDates)
+					}
+					if ctx.stripTimeZone {
+						t = t.UTC()
+					}
+					return t, nil
+				}
+			}
+			return in, nil
+		}
+		var err error
+		v1, err = Transform(v1, walkFunc)
+		if err != nil {
+			panic(err)
+		}
+		v2, err = Transform(v2, walkFunc)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	b := contains(v1, v2, &ctx)
 	if !b && ctx.trace != nil {
 		ctx.prependPathComponent("v1")
@@ -300,6 +356,13 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 		}
 	case bool, nil, float64:
 		return v1 == v2
+	case time.Time:
+		switch t2 := v2.(type) {
+		case time.Time:
+			return t1.Equal(t2) && t1.Location() == t2.Location()
+		default:
+			return false
+		}
 	case map[string]interface{}:
 		t2, isMap := v2.(map[string]interface{})
 		if !isMap {
@@ -339,23 +402,16 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 		switch t2 := v2.(type) {
 		case bool, nil, string, float64:
 			for _, el1 := range t1 {
-				el1, _ = normalize(el1, false, false, false)
 				if el1 == v2 {
 					return true
 				}
 			}
 			return false
 		case []interface{}:
-			// first, normalize the values in v1, so we
-			// don't re-normalize them in each loop
-			t1copy := make([]interface{}, len(t1))
-			for i, value := range t1 {
-				t1copy[i], _ = normalize(value, false, false, false)
-			}
 			for _, val2 := range t2 {
 				found := false
 			Search:
-				for _, value := range t1copy {
+				for _, value := range t1 {
 					if contains(value, val2, opt) {
 						found = true
 						break Search

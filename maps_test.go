@@ -85,6 +85,8 @@ func bigNestedMaps(prefix string, nesting int) map[string]interface{} {
 }
 
 func TestContains(t *testing.T) {
+	t1 := time.Now()
+
 	tests := []struct {
 		name     string
 		v1, v2   interface{}
@@ -304,6 +306,55 @@ func TestContains(t *testing.T) {
 			v2:       map[string]interface{}{"color": 0},
 			options:  []ContainsOption{EmptyMapValuesMatchAny()},
 			expected: false,
+		},
+		{
+			name:     "emptydate",
+			v1:       map[string]interface{}{"t": time.Now()},
+			v2:       map[string]interface{}{"t": time.Time{}},
+			options:  []ContainsOption{EmptyMapValuesMatchAny()},
+			expected: false,
+		},
+		{
+			name:     "parseDate",
+			v1:       map[string]interface{}{"t": time.Now()},
+			v2:       map[string]interface{}{"t": time.Time{}},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, true)},
+			expected: true,
+		},
+		{
+			name:     "equaldates",
+			v1:       map[string]interface{}{"t": t1},
+			v2:       map[string]interface{}{"t": t1},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, true)},
+			expected: true,
+		},
+		{
+			name:     "unequaldates",
+			v1:       map[string]interface{}{"t": t1},
+			v2:       map[string]interface{}{"t": t1.Add(time.Nanosecond)},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, true)},
+			expected: false,
+		},
+		{
+			name:     "rounddates",
+			v1:       map[string]interface{}{"t": t1},
+			v2:       map[string]interface{}{"t": t1.Add(time.Nanosecond)},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(time.Microsecond, true)},
+			expected: true,
+		},
+		{
+			name:     "timezones",
+			v1:       map[string]interface{}{"t": t1},
+			v2:       map[string]interface{}{"t": t1.UTC()},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, false)},
+			expected: false,
+		},
+		{
+			name:     "timezonesutc",
+			v1:       map[string]interface{}{"t": t1},
+			v2:       map[string]interface{}{"t": t1.UTC()},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(0, true)},
+			expected: true,
 		},
 	}
 
