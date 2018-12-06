@@ -322,9 +322,28 @@ func TestContains(t *testing.T) {
 		v2["color"] = "blue"
 		Contains(v1, v2, Trace(&trace))
 		assert.NotEmpty(t, trace, "trace should not be empty if contains returned false")
+		t.Log(trace)
 		assert.NotPanics(t, func() {
 			Contains(v1, v2, Trace(nil))
 		})
+
+		tests := []struct {
+			v1, v2        interface{}
+			expectedTrace string
+		}{
+			{v1: 1, v2: 2, expectedTrace: "v1 -> 1\nv2 -> 2"},
+			{v1: map[string]string{"color": "red"}, v2: 1, expectedTrace: "v1 -> map[color:red]\nv2 -> 1"},
+			{v1: map[string]string{"color": "red"}, v2: map[string]string{"color": "blue"}, expectedTrace: "v1.color -> red\nv2.color -> blue"},
+			{v1: map[string]interface{}{"color": map[string]string{"height": "tall"}}, v2: map[string]interface{}{"color": map[string]string{"height": "short"}}, expectedTrace: "v1.color.height -> tall\nv2.color.height -> short"},
+		}
+		for _, test := range tests {
+			t.Run("", func(t *testing.T) {
+				var trace string
+				Contains(test.v1, test.v2, Trace(&trace))
+				t.Log(trace)
+				assert.Equal(t, test.expectedTrace, trace)
+			})
+		}
 	})
 
 }

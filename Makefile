@@ -1,5 +1,5 @@
 
-all: fmt vet lint cover
+all: fmt lint cover
 
 fmt:
 	go fmt

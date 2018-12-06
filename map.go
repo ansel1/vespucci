@@ -137,20 +137,6 @@ type containsOptions struct {
 	stringMatches       bool
 	matchEmptyMapValues bool
 	trace               *string
-	tracing             bool
-	traceDepth          int
-	traceBuf            *bytes.Buffer
-}
-
-func (c *containsOptions) prependTraceMsg(s string) {
-	if c.trace != nil {
-		s = strings.Repeat("-", c.traceDepth) + "> " + s
-		if *c.trace == "" {
-			*c.trace = s
-		} else {
-			*c.trace = s + "\n" + *c.trace
-		}
-	}
 }
 
 // ContainsOption is an option which modifies the behavior of the Contains() function
@@ -217,7 +203,6 @@ func StringContains() ContainsOption {
 // If `s` is nil, it does nothing.
 func Trace(s *string) ContainsOption {
 	return func(o *containsOptions) {
-		o.tracing = true
 		o.trace = s
 	}
 }
@@ -254,23 +239,49 @@ func Trace(s *string) ContainsOption {
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
-	opt := containsOptions{}
+	ctx := containsCtx{}
 	for _, o := range options {
-		o(&opt)
+		o(&ctx.containsOptions)
 	}
+
 	v1, _ = normalize(v1, false, true, true)
 	v2, _ = normalize(v2, false, true, true)
-	return contains(v1, v2, opt)
+	b := contains(v1, v2, &ctx)
+	if !b && ctx.trace != nil {
+		ctx.prependPathComponent("v1")
+		path := strings.Join(ctx.path, ".")
+		ctx.path[0] = "v2"
+		path2 := strings.Join(ctx.path, ".")
+		s := fmt.Sprintf("%s -> %+v\n%s -> %+v", path, ctx.v1, path2, ctx.v2)
+		*ctx.trace = s
+	}
+	return b
 }
 
-func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
+type containsCtx struct {
+	path   []string
+	v1, v2 interface{}
+	containsOptions
+}
 
-	if opt.tracing {
-		opt.traceDepth++
+func (c *containsCtx) prependPathComponent(s string) {
+	c.path = append(c.path, "")
+	copy(c.path[1:], c.path)
+	c.path[0] = s
+}
+
+func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
+	opt.v1 = v1
+	opt.v2 = v2
+
+	var pathComponent string
+
+	if opt.trace != nil {
 		defer func() {
 			if !b {
-				opt.prependTraceMsg(fmt.Sprintf("v2: %+v", v2))
-				opt.prependTraceMsg(fmt.Sprintf("v1: %+v", v1))
+				if pathComponent != "" {
+					opt.prependPathComponent(pathComponent)
+				}
 
 			}
 		}()
@@ -301,6 +312,8 @@ func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
 		}
 	nextkey:
 		for key, val2 := range t2 {
+			// tracks where we are in the structure, used for tracing
+			pathComponent = key
 
 			val1, present := t1[key]
 			if !present {
@@ -318,9 +331,6 @@ func contains(v1, v2 interface{}, opt containsOptions) (b bool) {
 				}
 			}
 			if !contains(val1, val2, opt) {
-				if opt.tracing {
-					opt.prependTraceMsg(fmt.Sprintf("%#v", key))
-				}
 				return false
 			}
 		}
