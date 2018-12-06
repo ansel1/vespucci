@@ -35,6 +35,6 @@ update:
 tools:
 	go get -u github.com/golang/dep/cmd/dep
 	go get -u golang.org/x/tools/cmd/cover
-	go get -u github.com/golang/lint/golint
+	go get -u golang.org/x/lint/golint
 
 .PHONY: all fmt lint vet test cover build clean ensure update tools
