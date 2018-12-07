@@ -383,6 +383,9 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 		}
 	nextkey:
 		for key, val2 := range t2 {
+			// reset v1 and v2, which were changed by the calls to contains()
+			opt.v1 = v1
+			opt.v2 = v2
 
 			val1, present := t1[key]
 			if !present {
@@ -427,6 +430,9 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 					}
 				}
 				// one of the values in v2 was not found in v1
+				// reset v1 and v2, which were changed by the calls to contains()
+				opt.v1 = v1
+				opt.v2 = v2
 				opt.traceMsg = fmt.Sprintf(`v1 does not contain "%+v"`, val2)
 				return false
 			}

@@ -402,6 +402,10 @@ v2.color.height -> short`},
 key "size" in v2 is not present in v1
 v1 -> map[color:blue]
 v2 -> map[size:big]`},
+			{v1: []int{1}, v2: []int{1, 2}, expectedTrace: `
+v1 does not contain "2"
+v1 -> [1]
+v2 -> [1 2]`},
 		}
 		for _, test := range tests {
 			t.Run("", func(t *testing.T) {
