@@ -308,15 +308,19 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 		path := strings.Join(ctx.path, ".")
 		ctx.path[0] = "v2"
 		path2 := strings.Join(ctx.path, ".")
-		s := fmt.Sprintf("%s -> %+v\n%s -> %+v", path, ctx.v1, path2, ctx.v2)
+		if ctx.traceMsg == "" {
+			ctx.traceMsg = "v1 does not equal v2"
+		}
+		s := fmt.Sprintf("%s\n%s -> %+v\n%s -> %+v", ctx.traceMsg, path, ctx.v1, path2, ctx.v2)
 		*ctx.trace = s
 	}
 	return b
 }
 
 type containsCtx struct {
-	path   []string
-	v1, v2 interface{}
+	path     []string
+	v1, v2   interface{}
+	traceMsg string
 	containsOptions
 }
 
@@ -352,7 +356,8 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 			}
 			return v1 == v2
 		default:
-			return v1 == v2
+			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
+			return false
 		}
 	case bool, nil, float64:
 		return v1 == v2
@@ -361,25 +366,27 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 		case time.Time:
 			return t1.Equal(t2) && t1.Location() == t2.Location()
 		default:
+			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
 			return false
 		}
 	case map[string]interface{}:
 		t2, isMap := v2.(map[string]interface{})
 		if !isMap {
 			// v1 is a map, but v2 isn't; v1 can't contain v2
+			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
 			return false
 		}
 		if len(t2) > len(t1) {
 			// if t2 is bigger than t1, then t1 can't contain t2
+			opt.traceMsg = `v2 has more keys than v1`
 			return false
 		}
 	nextkey:
 		for key, val2 := range t2 {
-			// tracks where we are in the structure, used for tracing
-			pathComponent = key
 
 			val1, present := t1[key]
 			if !present {
+				opt.traceMsg = fmt.Sprintf(`key "%s" in v2 is not present in v1`, key)
 				return false
 			}
 
@@ -393,7 +400,10 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 					continue nextkey
 				}
 			}
+
 			if !contains(val1, val2, opt) {
+				// tracks where we are in the structure, used for tracing
+				pathComponent = key
 				return false
 			}
 		}
@@ -406,24 +416,23 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 					return true
 				}
 			}
+			opt.traceMsg = fmt.Sprintf(`v1 does not contain "%+v"`, v2)
 			return false
 		case []interface{}:
+		Search:
 			for _, val2 := range t2 {
-				found := false
-			Search:
 				for _, value := range t1 {
 					if contains(value, val2, opt) {
-						found = true
-						break Search
+						continue Search
 					}
 				}
-				if !found {
-					// one of the values in v2 was not found in v1
-					return false
-				}
+				// one of the values in v2 was not found in v1
+				opt.traceMsg = fmt.Sprintf(`v1 does not contain "%+v"`, val2)
+				return false
 			}
 			return true
 		default:
+			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
 			return false
 		}
 	default:

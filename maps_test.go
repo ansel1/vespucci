@@ -382,17 +382,34 @@ func TestContains(t *testing.T) {
 			v1, v2        interface{}
 			expectedTrace string
 		}{
-			{v1: 1, v2: 2, expectedTrace: "v1 -> 1\nv2 -> 2"},
-			{v1: map[string]string{"color": "red"}, v2: 1, expectedTrace: "v1 -> map[color:red]\nv2 -> 1"},
-			{v1: map[string]string{"color": "red"}, v2: map[string]string{"color": "blue"}, expectedTrace: "v1.color -> red\nv2.color -> blue"},
-			{v1: map[string]interface{}{"color": map[string]string{"height": "tall"}}, v2: map[string]interface{}{"color": map[string]string{"height": "short"}}, expectedTrace: "v1.color.height -> tall\nv2.color.height -> short"},
+			{v1: 1, v2: 2, expectedTrace: `
+v1 does not equal v2
+v1 -> 1
+v2 -> 2`},
+			{v1: map[string]string{"color": "red"}, v2: 1, expectedTrace: `
+v1 type map[string]interface {} does not match v1 type float64
+v1 -> map[color:red]
+v2 -> 1`},
+			{v1: map[string]string{"color": "red"}, v2: map[string]string{"color": "blue"}, expectedTrace: `
+v1 does not equal v2
+v1.color -> red
+v2.color -> blue`},
+			{v1: map[string]interface{}{"color": map[string]string{"height": "tall"}}, v2: map[string]interface{}{"color": map[string]string{"height": "short"}}, expectedTrace: `
+v1 does not equal v2
+v1.color.height -> tall
+v2.color.height -> short`},
+			{v1: map[string]interface{}{"color": "blue"}, v2: map[string]interface{}{"size": "big"}, expectedTrace: `
+key "size" in v2 is not present in v1
+v1 -> map[color:blue]
+v2 -> map[size:big]`},
 		}
 		for _, test := range tests {
 			t.Run("", func(t *testing.T) {
 				var trace string
 				Contains(test.v1, test.v2, Trace(&trace))
 				t.Log(trace)
-				assert.Equal(t, test.expectedTrace, trace)
+				// strip off the leading new line.  Only there to make the test more readable
+				assert.Equal(t, test.expectedTrace[1:], trace)
 			})
 		}
 	})
