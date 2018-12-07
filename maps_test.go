@@ -406,6 +406,11 @@ v2 -> map[size:big]`},
 v1 does not contain "2"
 v1 -> [1]
 v2 -> [1 2]`},
+			{v1: map[string]interface{}{"colors": map[string]interface{}{"color": "red"}}, v2: map[string]interface{}{"colors": map[string]interface{}{"color": "blue"}},
+				expectedTrace: `
+v1 does not equal v2
+v1.colors.color -> red
+v2.colors.color -> blue`},
 		}
 		for _, test := range tests {
 			t.Run("", func(t *testing.T) {
