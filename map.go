@@ -334,19 +334,6 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 	opt.v1 = v1
 	opt.v2 = v2
 
-	var pathComponent string
-
-	if opt.trace != nil {
-		defer func() {
-			if !b {
-				if pathComponent != "" {
-					opt.prependPathComponent(pathComponent)
-				}
-
-			}
-		}()
-	}
-
 	switch t1 := v1.(type) {
 	case string:
 		switch t2 := v2.(type) {
@@ -406,7 +393,7 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 
 			if !contains(val1, val2, opt) {
 				// tracks where we are in the structure, used for tracing
-				pathComponent = key
+				opt.prependPathComponent(key)
 				return false
 			}
 		}
