@@ -819,7 +819,7 @@ func Empty(v interface{}) bool {
 		case reflect.Func:
 			return false
 		case reflect.Struct:
-			return rv.Interface() == reflect.Zero(rv.Type()).Interface()
+			return reflect.DeepEqual(rv.Interface(), reflect.Zero(rv.Type()).Interface())
 		case reflect.UnsafePointer:
 			return false
 		case reflect.Ptr:

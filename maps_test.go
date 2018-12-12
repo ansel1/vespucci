@@ -643,6 +643,12 @@ func TestEmpty(t *testing.T) {
 	var ptr *Widget
 	var nilPtr *Widget
 	nilPtr = nil
+	type St struct{
+		a, b string
+		i int
+		ar []string
+	}
+	var s St
 	emptyTests := []interface{}{
 		nil, "", "  ", map[string]interface{}{},
 		[]interface{}{}, map[string]string{},
@@ -668,9 +674,12 @@ func TestEmpty(t *testing.T) {
 		complex64(0),
 		complex128(0),
 		Widget{},
+		s,
+		St{},
 
 		make(chan string),
 		holder{},
+
 	}
 	for _, v := range emptyTests {
 		assert.True(t, Empty(v), "v = %#v", v)
