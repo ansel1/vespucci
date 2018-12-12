@@ -191,22 +191,22 @@ func EmptyMapValuesMatchAny() ContainsOption {
 // to parse any string values back into time.Time values.  This allows correct processing of
 // the time.Time zero values.
 //
-// If rounding is > 0, times will be rounded.  If ignoreTimeZone is true, the location data will
+// If truncation is > 0, times will be truncation.  If ignoreTimeZone is true, the location data will
 // be stripped off the time values before comparison.
-func ParseDates(rounding time.Duration, ignoreTimeZone bool) ContainsOption {
+func ParseDates(truncation time.Duration, ignoreTimeZone bool) ContainsOption {
 	return func(o *containsOptions) {
 		o.parseDates = true
-		o.roundDates = rounding
+		o.truncateDates = truncation
 		o.stripTimeZone = ignoreTimeZone
 	}
 }
 
-// TruncateDates is like ParseDates, but truncates time values rather than rounding them.
+// RoundDates is like ParseDates, but rounds time values rather than truncating them.
 // If both options are specified, truncation will be applied first.
-func TruncateDates(truncation time.Duration, ignoreTimeZone bool) ContainsOption {
+func RoundDates(rounding time.Duration, ignoreTimeZone bool) ContainsOption {
 	return func(o *containsOptions) {
 		o.parseDates = true
-		o.truncateDates = truncation
+		o.roundDates = rounding
 		o.stripTimeZone = ignoreTimeZone
 	}
 }
