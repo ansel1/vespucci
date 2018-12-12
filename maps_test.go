@@ -343,6 +343,20 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
+			name:     "rounddoesnttruncatedates",
+			v1:       map[string]interface{}{"t": t1.Truncate(time.Microsecond).Add(900 * time.Nanosecond)},
+			v2:       map[string]interface{}{"t": t1.Truncate(time.Microsecond).Add(100 * time.Nanosecond)},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), ParseDates(time.Microsecond, true)},
+			expected: false,
+		},
+		{
+			name:     "truncatedates",
+			v1:       map[string]interface{}{"t": t1.Truncate(time.Microsecond).Add(900 * time.Nanosecond)},
+			v2:       map[string]interface{}{"t": t1.Truncate(time.Microsecond).Add(100 * time.Nanosecond)},
+			options:  []ContainsOption{EmptyMapValuesMatchAny(), TruncateDates(time.Microsecond, true)},
+			expected: true,
+		},
+		{
 			name:     "timezones",
 			v1:       map[string]interface{}{"t": t1.In(time.FixedZone("test", -3))},
 			v2:       map[string]interface{}{"t": t1.UTC()},
@@ -643,10 +657,10 @@ func TestEmpty(t *testing.T) {
 	var ptr *Widget
 	var nilPtr *Widget
 	nilPtr = nil
-	type St struct{
+	type St struct {
 		a, b string
-		i int
-		ar []string
+		i    int
+		ar   []string
 	}
 	var s St
 	emptyTests := []interface{}{
@@ -679,7 +693,6 @@ func TestEmpty(t *testing.T) {
 
 		make(chan string),
 		holder{},
-
 	}
 	for _, v := range emptyTests {
 		assert.True(t, Empty(v), "v = %#v", v)

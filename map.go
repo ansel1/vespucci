@@ -140,6 +140,7 @@ type containsOptions struct {
 	trace               *string
 	parseDates          bool
 	roundDates          time.Duration
+	truncateDates       time.Duration
 	stripTimeZone       bool
 }
 
@@ -196,6 +197,16 @@ func ParseDates(rounding time.Duration, ignoreTimeZone bool) ContainsOption {
 	return func(o *containsOptions) {
 		o.parseDates = true
 		o.roundDates = rounding
+		o.stripTimeZone = ignoreTimeZone
+	}
+}
+
+// TruncateDates is like ParseDates, but truncates time values rather than rounding them.
+// If both options are specified, truncation will be applied first.
+func TruncateDates(truncation time.Duration, ignoreTimeZone bool) ContainsOption {
+	return func(o *containsOptions) {
+		o.parseDates = true
+		o.truncateDates = truncation
 		o.stripTimeZone = ignoreTimeZone
 	}
 }
@@ -279,6 +290,9 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 				if err == nil {
 					if t.IsZero() && ctx.matchEmptyMapValues {
 						return nil, nil
+					}
+					if ctx.truncateDates > 0 {
+						t = t.Truncate(ctx.truncateDates)
 					}
 					if ctx.roundDates > 0 {
 						t = t.Round(ctx.roundDates)
