@@ -134,26 +134,29 @@ func transform(v interface{}, transformer func(in interface{}) (interface{}, err
 }
 
 type containsOptions struct {
-	stringContains      bool
-	stringMatches       bool
-	matchEmptyMapValues bool
-	trace               *string
-	parseDates          bool
-	roundDates          time.Duration
-	truncateDates       time.Duration
-	stripTimeZone       bool
+	stringContains   bool
+	stringMatches    bool
+	matchEmptyValues bool
+	trace            *string
+	parseTimes       bool
+	roundTimes       time.Duration
+	truncateTimes    time.Duration
+	timeDelta        time.Duration
+	ignoreTimeZone   bool
 }
 
 // ContainsOption is an option which modifies the behavior of the Contains() function
 type ContainsOption func(*containsOptions)
 
-// EmptyMapValuesMatchAny is a ContainsOption which allows looser matching of map values.
-// If set, when matching map entries, an entry in v2's map will match an entry in v1's map if:
+// EmptyMapValuesMatchAny is an alias for EmptyValuesMatchAny.
+var EmptyMapValuesMatchAny = EmptyValuesMatchAny
+
+// EmptyValuesMatchAny is a ContainsOption which allows looser matching of empty values.
+// If set, a value in v1 will match a value in v2 if:
 //
-// - the key matches AND
-// - the value in v1 contains the value in v2
-//   OR the value in v2 is nil
-//   OR the value in v2 is the zero value of the type of v1's value
+// - v1 contains v2
+// - OR v2 is nil
+// - OR v2 is the zero value of the type of v1's value
 //
 // This is convenient when testing whether a struct contains another struct.  Structs are normalized
 // by marshalling them to JSON.  Fields which don't have the `omitempty` option will appear in the
@@ -177,37 +180,64 @@ type ContainsOption func(*containsOptions)
 //     v2 := map[string]interface{}{"size":""}
 //     Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because type of value doesn't match (v1: number, v2: string)
 //
-func EmptyMapValuesMatchAny() ContainsOption {
+func EmptyValuesMatchAny() ContainsOption {
 	return func(o *containsOptions) {
-		o.matchEmptyMapValues = true
+		o.matchEmptyValues = true
 	}
 }
 
-// ParseDates enables special processing for date values.  Contains typically marshals time.Time values
-// to a string before comparison.  This means comparisons of time.Time values will not account for
-// zero values, ignoring time zones, rounding times to a nearest precision, etc.
+// ParseTimes enables special processing for date values.  Contains typically marshals time.Time values
+// to a string before comparison.  This means the EmptyValuesMatchAny() option will not work
+// as expected for time values.
 //
-// When ParseDates is specified, after the values are normalized to strings, the code will attempt
+// When ParseTimes is specified, after the values are normalized to strings, the code will attempt
 // to parse any string values back into time.Time values.  This allows correct processing of
 // the time.Time zero values.
-//
-// If truncation is > 0, times will be truncation.  If ignoreTimeZone is true, the location data will
-// be stripped off the time values before comparison.
-func ParseDates(truncation time.Duration, ignoreTimeZone bool) ContainsOption {
+func ParseTimes() ContainsOption {
 	return func(o *containsOptions) {
-		o.parseDates = true
-		o.truncateDates = truncation
-		o.stripTimeZone = ignoreTimeZone
+		o.parseTimes = true
 	}
 }
 
-// RoundDates is like ParseDates, but rounds time values rather than truncating them.
-// If both options are specified, truncation will be applied first.
-func RoundDates(rounding time.Duration, ignoreTimeZone bool) ContainsOption {
+// AllowTimeDelta configures the precision of time comparison.  Time values will be considered equal if the
+// difference between the two values is less than d.
+//
+// Implies ParseTimes
+func AllowTimeDelta(d time.Duration) ContainsOption {
 	return func(o *containsOptions) {
-		o.parseDates = true
-		o.roundDates = rounding
-		o.stripTimeZone = ignoreTimeZone
+		o.parseTimes = true
+		o.timeDelta = d
+	}
+}
+
+// TruncateTimes will truncate time values (see time.Time#Truncate)
+//
+// Implies ParseTimes
+func TruncateTimes(d time.Duration) ContainsOption {
+	return func(o *containsOptions) {
+		o.parseTimes = true
+		o.truncateTimes = d
+	}
+}
+
+// RoundTimes will round time values (see time.Time#Round)
+//
+// Implies ParseTimes
+func RoundTimes(d time.Duration) ContainsOption {
+	return func(o *containsOptions) {
+		o.parseTimes = true
+		o.roundTimes = d
+	}
+}
+
+// IgnoreTimeZones will ignore the time zones of time values (otherwise
+// the time zones must match).
+//
+// Implies ParseTimes
+func IgnoreTimeZones(b bool) ContainsOption {
+	return func(o *containsOptions) {
+		o.parseTimes = true
+		o.ignoreTimeZone = true
 	}
 }
 
@@ -280,42 +310,6 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 	v1, _ = normalize(v1, false, true, true)
 	v2, _ = normalize(v2, false, true, true)
 
-	// when this option is set, we essentially undo the JSON-ification of date values, parsing
-	// them back into time.Time.  We then do rounding, and can do omitempty style processing
-	// on them.
-	if ctx.parseDates {
-		walkFunc := func(in interface{}) (i interface{}, e error) {
-			if s, ok := in.(string); ok {
-				t, err := time.Parse(time.RFC3339, s)
-				if err == nil {
-					if t.IsZero() && ctx.matchEmptyMapValues {
-						return nil, nil
-					}
-					if ctx.truncateDates > 0 {
-						t = t.Truncate(ctx.truncateDates)
-					}
-					if ctx.roundDates > 0 {
-						t = t.Round(ctx.roundDates)
-					}
-					if ctx.stripTimeZone {
-						t = t.UTC()
-					}
-					return t, nil
-				}
-			}
-			return in, nil
-		}
-		var err error
-		v1, err = Transform(v1, walkFunc)
-		if err != nil {
-			panic(err)
-		}
-		v2, err = Transform(v2, walkFunc)
-		if err != nil {
-			panic(err)
-		}
-	}
-
 	b := contains(v1, v2, &ctx)
 	if !b && ctx.trace != nil {
 		ctx.prependPathComponent("v1")
@@ -348,28 +342,62 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 	opt.v1 = v1
 	opt.v2 = v2
 
+	if opt.matchEmptyValues {
+		if v2 == nil {
+			return true
+		}
+
+		type1 := reflect.TypeOf(v1)
+		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), v2) {
+			return true
+		}
+	}
+
 	switch t1 := v1.(type) {
 	case string:
 		switch t2 := v2.(type) {
 		case string:
+			if v1 == v2 {
+				return true
+			}
+			if opt.parseTimes {
+				tm1, err := time.Parse(time.RFC3339Nano, t1)
+				if err == nil {
+					tm2, err := time.Parse(time.RFC3339Nano, t2)
+					if err == nil {
+						if tm2.IsZero() && opt.matchEmptyValues {
+							return true
+						}
+						if opt.truncateTimes > 0 {
+							tm1 = tm1.Truncate(opt.truncateTimes)
+							tm2 = tm2.Truncate(opt.truncateTimes)
+						}
+						if opt.roundTimes > 0 {
+							tm1 = tm1.Round(opt.roundTimes)
+							tm2 = tm2.Round(opt.roundTimes)
+						}
+						delta := tm1.Sub(tm2)
+						if delta > opt.timeDelta || delta < -opt.timeDelta {
+							opt.traceMsg = fmt.Sprintf(`delta between v1 and v2 was greater than %v.  delta: %v`, opt.timeDelta, delta)
+							return false
+						}
+						if opt.ignoreTimeZone {
+							return true
+						}
+						return tm1.Location() == tm2.Location()
+					}
+				}
+			}
 			if opt.stringContains {
 				return strings.Contains(t1, t2)
 			}
-			return v1 == v2
+			return false
 		default:
 			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
 			return false
 		}
 	case bool, nil, float64:
 		return v1 == v2
-	case time.Time:
-		switch t2 := v2.(type) {
-		case time.Time:
-			return t1.Equal(t2) && t1.Location() == t2.Location()
-		default:
-			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
-			return false
-		}
 	case map[string]interface{}:
 		t2, isMap := v2.(map[string]interface{})
 		if !isMap {
@@ -382,7 +410,6 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 			opt.traceMsg = `v2 has more keys than v1`
 			return false
 		}
-	nextkey:
 		for key, val2 := range t2 {
 			// reset v1 and v2, which were changed by the calls to contains()
 			opt.v1 = v1
@@ -394,17 +421,6 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 				return false
 			}
 
-			if opt.matchEmptyMapValues {
-				if val2 == nil {
-					continue nextkey
-				}
-
-				type1 := reflect.TypeOf(val1)
-				if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), val2) {
-					continue nextkey
-				}
-			}
-
 			if !contains(val1, val2, opt) {
 				// tracks where we are in the structure, used for tracing
 				opt.prependPathComponent(key)
@@ -414,9 +430,9 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 		return true
 	case []interface{}:
 		switch t2 := v2.(type) {
-		case bool, nil, string, float64:
+		default:
 			for _, el1 := range t1 {
-				if el1 == v2 {
+				if contains(el1, v2, opt) {
 					return true
 				}
 			}
@@ -438,9 +454,6 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 				return false
 			}
 			return true
-		default:
-			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
-			return false
 		}
 	default:
 		// since we deeply normalized both values, we should not hit this.
