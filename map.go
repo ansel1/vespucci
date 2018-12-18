@@ -377,7 +377,10 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 							tm2 = tm2.Round(opt.roundTimes)
 						}
 						delta := tm1.Sub(tm2)
-						if delta > opt.timeDelta || delta < -opt.timeDelta {
+						if delta < 0 {
+							delta *= -1
+						}
+						if delta > opt.timeDelta {
 							opt.traceMsg = fmt.Sprintf(`delta between v1 and v2 was greater than %v.  delta: %v`, opt.timeDelta, delta)
 							return false
 						}
