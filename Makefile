@@ -2,38 +2,34 @@
 all: fmt lint cover
 
 fmt:
-	go fmt
+	(cd v4 && go fmt ./...)
 
 lint:
-	golint
+	(cd v4 && golint ./...)
 
 vet:
-	go vet
+	(cd v4 && go vet ./...)
 
 test:
-	go test
+	(cd v4 && go test ./...)
 
 
 cover:
 	if [ ! -d build ]; then mkdir build; fi
-	go test -covermode=count -coverprofile=build/coverage.out
-	go tool cover -html=build/coverage.out -o build/coverage.html
+	(cd v4 && go test ./... -covermode=count -coverprofile=../build/coverage.out)
+	(cd v4 && go tool cover -html=../build/coverage.out -o ../build/coverage.html)
 
 build:
-	go build
+	(cd v4 && go build ./...)
 
 clean:
 	rm -rf build/
 	go clean
 
-ensure:
-	dep ensure
-
 update:
-	dep ensure --update
+	(cd v4 && go get -u)
 
 tools:
-	go get -u github.com/golang/dep/cmd/dep
 	go get -u golang.org/x/tools/cmd/cover
 	go get -u golang.org/x/lint/golint
 
