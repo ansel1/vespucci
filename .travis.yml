@@ -4,5 +4,6 @@ before_script:
   - make tools
 
 go:
-  - "1.11"
+  - "1.12"
+  - "1.13"
   - tip
