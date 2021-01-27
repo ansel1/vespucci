@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -41,11 +42,15 @@ func Keys(m map[string]interface{}) (keys []string) {
 func Merge(v1, v2 interface{}) interface{} {
 	v1, _ = normalize(v1, true, true, true)
 	v2, _ = normalize(v2, true, true, true)
+	return merge(v1, v2)
+}
+
+func merge(v1, v2 interface{}) interface{} {
 	switch t1 := v1.(type) {
 	case map[string]interface{}:
 		if t2, isMap := v2.(map[string]interface{}); isMap {
 			for key, value := range t2 {
-				t1[key] = Merge(t1[key], value)
+				t1[key] = merge(t1[key], value)
 			}
 			return t1
 		}
@@ -135,7 +140,6 @@ func transform(v interface{}, transformer func(in interface{}) (interface{}, err
 
 type containsOptions struct {
 	stringContains   bool
-	stringMatches    bool
 	matchEmptyValues bool
 	trace            *string
 	parseTimes       bool
@@ -143,6 +147,7 @@ type containsOptions struct {
 	truncateTimes    time.Duration
 	timeDelta        time.Duration
 	ignoreTimeZone   bool
+	invertValues     bool
 }
 
 // ContainsOption is an option which modifies the behavior of the Contains() function
@@ -302,6 +307,13 @@ func Trace(s *string) ContainsOption {
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
+	result, _, _ := ContainsEx(v1, v2, options...)
+	return result
+}
+
+// ContainsEx is the same as Contains, but returns the normalized versions of v1 and v2 used
+// in the comparison.
+func ContainsEx(v1, v2 interface{}, options ...ContainsOption) (result bool, v1Norm, v2Norm interface{}) {
 	ctx := containsCtx{}
 	for _, o := range options {
 		o(&ctx.containsOptions)
@@ -310,125 +322,192 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 	v1, _ = normalize(v1, false, true, true)
 	v2, _ = normalize(v2, false, true, true)
 
-	b := contains(v1, v2, &ctx)
-	if !b && ctx.trace != nil {
-		ctx.prependPathComponent("v1")
-		path := strings.Join(ctx.path, ".")
-		ctx.path[0] = "v2"
-		path2 := strings.Join(ctx.path, ".")
-		if ctx.traceMsg == "" {
-			ctx.traceMsg = "v1 does not equal v2"
-		}
-		s := fmt.Sprintf("%s\n%s -> %+v\n%s -> %+v", ctx.traceMsg, path, ctx.v1, path2, ctx.v2)
-		*ctx.trace = s
+	return contains(v1, v2, &ctx), v1, v2
+}
+
+// Equivalent checks if v1 and v2 are approximately deeply equal to each other.
+// It takes the same comparison options as Contains.  It is equivalent to:
+//
+//     Equivalent(v1, v2) == Contains(v1, v2) && Contains(v2, v1)
+//
+// ContainsOptions which only work in one direction, like StringContains, will
+// always treat v2 as a pattern or rule to match v1 against.  For example:
+//
+//     b := Equivalent("thefox", "fox", StringContains())
+//
+// b is true because "thefox" contains "fox", even though the inverse is not true
+func Equivalent(v1, v2 interface{}, options ...ContainsOption) bool {
+	result, _, _ := EquivalentEx(v1, v2, options...)
+	return result
+}
+
+// EquivalentEx is the same as Equivalent, but returns the normalized versions of v1 and v2 used
+// in the comparison.
+func EquivalentEx(v1, v2 interface{}, options ...ContainsOption) (result bool, v1Norm, v2Norm interface{}) {
+	ctx := containsCtx{}
+	for _, o := range options {
+		o(&ctx.containsOptions)
 	}
-	return b
+
+	v1, _ = normalize(v1, false, true, true)
+	v2, _ = normalize(v2, false, true, true)
+
+	if !contains(v1, v2, &ctx) {
+		return false, v1, v2
+	}
+
+	ctx.invertValues = true
+	return contains(v2, v1, &ctx), v1, v2
 }
 
 type containsCtx struct {
-	path     []string
-	v1, v2   interface{}
-	traceMsg string
+	path []string
 	containsOptions
 }
 
-func (c *containsCtx) prependPathComponent(s string) {
-	c.path = append(c.path, "")
-	copy(c.path[1:], c.path)
-	c.path[0] = s
+func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
+	if c.trace == nil {
+		return
+	}
+
+	path1 := strings.Join(append([]string{"v1"}, c.path...), "")
+	path2 := strings.Join(append([]string{"v2"}, c.path...), "")
+
+	if c.invertValues {
+		msg = strings.ReplaceAll(msg, "v1", path2)
+		msg = strings.ReplaceAll(msg, "v2", path1)
+
+		*c.trace = fmt.Sprintf("%s\n%s -> %+v\n%s -> %+v", msg, path1, v2, path2, v1)
+	} else {
+		msg = strings.ReplaceAll(msg, "v1", path1)
+		msg = strings.ReplaceAll(msg, "v2", path2)
+
+		*c.trace = fmt.Sprintf("%s\n%s -> %+v\n%s -> %+v", msg, path1, v1, path2, v2)
+	}
+
+}
+
+func (c *containsCtx) traceNotEqual(v1, v2 interface{}) {
+	c.traceMsg("values are not equal", v1, v2)
 }
 
 func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
-	opt.v1 = v1
-	opt.v2 = v2
-
 	if opt.matchEmptyValues {
-		if v2 == nil {
+		match := v1
+		against := v2
+		if opt.invertValues {
+			match = v2
+			against = v1
+		}
+		if against == nil {
 			return true
 		}
 
-		type1 := reflect.TypeOf(v1)
-		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), v2) {
+		type1 := reflect.TypeOf(match)
+		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), against) {
 			return true
 		}
 	}
 
 	switch t1 := v1.(type) {
 	case string:
-		switch t2 := v2.(type) {
-		case string:
-			if v1 == v2 {
-				return true
-			}
-			if opt.parseTimes {
-				tm1, err := time.Parse(time.RFC3339Nano, t1)
+		if v1 == v2 {
+			return true
+		}
+
+		s2, ok := v2.(string)
+		if !ok {
+			opt.traceNotEqual(v1, v2)
+			return false
+		}
+
+		if opt.parseTimes {
+			tm1, err := time.Parse(time.RFC3339Nano, t1)
+			if err == nil {
+				tm2, err := time.Parse(time.RFC3339Nano, s2)
 				if err == nil {
-					tm2, err := time.Parse(time.RFC3339Nano, t2)
-					if err == nil {
-						if tm2.IsZero() && opt.matchEmptyValues {
+					if opt.matchEmptyValues {
+						if opt.invertValues && tm1.IsZero() {
+							return true
+						} else if tm2.IsZero() {
 							return true
 						}
-						if opt.truncateTimes > 0 {
-							tm1 = tm1.Truncate(opt.truncateTimes)
-							tm2 = tm2.Truncate(opt.truncateTimes)
-						}
-						if opt.roundTimes > 0 {
-							tm1 = tm1.Round(opt.roundTimes)
-							tm2 = tm2.Round(opt.roundTimes)
-						}
-						delta := tm1.Sub(tm2)
-						if delta < 0 {
-							delta *= -1
-						}
-						if delta > opt.timeDelta {
-							opt.traceMsg = fmt.Sprintf(`delta between v1 and v2 was greater than %v.  delta: %v`, opt.timeDelta, delta)
-							return false
-						}
-						if opt.ignoreTimeZone {
-							return true
-						}
-						return tm1.Location() == tm2.Location()
 					}
+					if opt.truncateTimes > 0 {
+						tm1 = tm1.Truncate(opt.truncateTimes)
+						tm2 = tm2.Truncate(opt.truncateTimes)
+					}
+					if opt.roundTimes > 0 {
+						tm1 = tm1.Round(opt.roundTimes)
+						tm2 = tm2.Round(opt.roundTimes)
+					}
+					delta := tm1.Sub(tm2)
+					if delta < 0 {
+						delta *= -1
+					}
+					if delta > opt.timeDelta {
+						if opt.timeDelta > 0 {
+							opt.traceMsg(fmt.Sprintf(`delta of %v exceeds %v`, delta, opt.timeDelta), v1, v2)
+						} else {
+							opt.traceNotEqual(v1, v2)
+						}
+						return false
+					}
+					if opt.ignoreTimeZone {
+						return true
+					}
+					if tm1.Location() != tm2.Location() {
+						opt.traceMsg(`time zone offsets don't match`, v1, v2)
+					}
+					return true
 				}
 			}
-			if opt.stringContains {
-				return strings.Contains(t1, t2)
+		}
+		if opt.stringContains {
+			match := t1
+			against := s2
+			if opt.invertValues {
+				match = s2
+				against = t1
 			}
-			return false
-		default:
-			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
-			return false
+			if !strings.Contains(match, against) {
+				opt.traceMsg(`v1 does not contain v2`, v1, v2)
+			}
+			return true
 		}
+		opt.traceNotEqual(v1, v2)
+		return false
 	case bool, nil, float64:
-		return v1 == v2
+		if v1 != v2 {
+			opt.traceNotEqual(v1, v2)
+			return false
+		}
+		return true
 	case map[string]interface{}:
-		t2, isMap := v2.(map[string]interface{})
-		if !isMap {
+		t2, ok := v2.(map[string]interface{})
+		if !ok {
 			// v1 is a map, but v2 isn't; v1 can't contain v2
-			opt.traceMsg = fmt.Sprintf(`v1 type %T does not match v1 type %T`, v1, v2)
+			opt.traceNotEqual(v1, v2)
 			return false
 		}
-		if len(t2) > len(t1) {
-			// if t2 is bigger than t1, then t1 can't contain t2
-			opt.traceMsg = `v2 has more keys than v1`
-			return false
-		}
+		var extraKeys []string
 		for key, val2 := range t2 {
-			// reset v1 and v2, which were changed by the calls to contains()
-			opt.v1 = v1
-			opt.v2 = v2
-
 			val1, present := t1[key]
 			if !present {
-				opt.traceMsg = fmt.Sprintf(`key "%s" in v2 is not present in v1`, key)
-				return false
+				extraKeys = append(extraKeys, key)
+			} else {
+				opt.path = append(opt.path, "."+key)
+				b2 := contains(val1, val2, opt)
+				opt.path = opt.path[:len(opt.path)-1]
+				if !b2 {
+					return false
+				}
 			}
-
-			if !contains(val1, val2, opt) {
-				// tracks where we are in the structure, used for tracing
-				opt.prependPathComponent(key)
-				return false
-			}
+		}
+		if len(extraKeys) > 0 {
+			sort.Strings(extraKeys)
+			opt.traceMsg(fmt.Sprintf(`v2 contains extra keys: %v`, extraKeys), v1, v2)
+			return false
 		}
 		return true
 	case []interface{}:
@@ -439,28 +518,28 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 					return true
 				}
 			}
-			opt.traceMsg = fmt.Sprintf(`v1 does not contain "%+v"`, v2)
+			opt.traceMsg(fmt.Sprintf(`v1 does not contain v2`), v1, v2)
 			return false
 		case []interface{}:
 		Search:
-			for _, val2 := range t2 {
+			for i, val2 := range t2 {
 				for _, value := range t1 {
 					if contains(value, val2, opt) {
 						continue Search
 					}
 				}
-				// one of the values in v2 was not found in v1
-				// reset v1 and v2, which were changed by the calls to contains()
-				opt.v1 = v1
-				opt.v2 = v2
-				opt.traceMsg = fmt.Sprintf(`v1 does not contain "%+v"`, val2)
+				opt.traceMsg(fmt.Sprintf(`v1 does not contain v2[%v]: "%+v"`, i, val2), v1, v2)
 				return false
 			}
 			return true
 		}
 	default:
 		// since we deeply normalized both values, we should not hit this.
-		return reflect.DeepEqual(v1, v2)
+		equal := reflect.DeepEqual(v1, v2)
+		if !equal {
+			opt.traceMsg("values are not equal", v1, v2)
+		}
+		return equal
 	}
 }
 
@@ -469,8 +548,13 @@ func contains(v1, v2 interface{}, opt *containsCtx) (b bool) {
 // i.e. if the two maps were merged, no values would be overwritten
 // conflicts == !contains(v1, v2) && !excludes(v1, v2)
 // conflicts == !contains(merge(v1, v2), v1)
-func Conflicts(m1, m2 map[string]interface{}) bool {
-	return !Contains(Merge(m1, m2), m1)
+func Conflicts(v1, v2 interface{}) bool {
+	v1, _ = normalize(v1, true, true, true)
+	v2, _ = normalize(v2, true, true, true)
+
+	// merge will modify v1 in place.  make a pristine copy of v1 to compare against the merge
+	v1orig, _ := normalize(v1, true, false, true)
+	return !contains(merge(v1, v2), v1orig, &containsCtx{})
 }
 
 // NormalizeOptions are options for the Normalize function.

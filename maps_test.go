@@ -30,17 +30,17 @@ func TestMerge(t *testing.T) {
 	}
 
 	literalMapsTests := []struct {
-		m1, m2, m3 map[string]interface{}
+		m1, m2, m3 dict
 	}{
 		{
-			map[string]interface{}{"tags": []string{"red", "green"}},
-			map[string]interface{}{"tags": []string{"green", "blue"}},
-			map[string]interface{}{"tags": []interface{}{"red", "green", "blue"}},
+			dict{"tags": []string{"red", "green"}},
+			dict{"tags": []string{"green", "blue"}},
+			dict{"tags": []interface{}{"red", "green", "blue"}},
 		},
 		{
-			map[string]interface{}{"color": "red"},
-			map[string]interface{}{"color": "blue"},
-			map[string]interface{}{"color": "blue"},
+			dict{"color": "red"},
+			dict{"color": "blue"},
+			dict{"color": "blue"},
 		},
 	}
 	for _, test := range literalMapsTests {
@@ -49,19 +49,19 @@ func TestMerge(t *testing.T) {
 	}
 
 	// make sure v1 is not modified
-	m1 := map[string]interface{}{"color": "blue"}
-	m2 := map[string]interface{}{"color": "red"}
+	m1 := dict{"color": "blue"}
+	m2 := dict{"color": "red"}
 	m3 := Merge(m1, m2)
-	assert.Equal(t, map[string]interface{}{"color": "red"}, m3)
-	assert.Equal(t, map[string]interface{}{"color": "blue"}, m1)
+	assert.Equal(t, dict{"color": "red"}, m3)
+	assert.Equal(t, dict{"color": "blue"}, m1)
 }
 
 func TestKeys(t *testing.T) {
 	tests := []struct {
-		m map[string]interface{}
+		m dict
 		k []string
 	}{
-		{map[string]interface{}{"color": "blue", "price": "high", "weight": 2}, []string{"color", "price", "weight"}},
+		{dict{"color": "blue", "price": "high", "weight": 2}, []string{"color", "price", "weight"}},
 	}
 	for _, test := range tests {
 		sort.Strings(test.k)
@@ -71,8 +71,8 @@ func TestKeys(t *testing.T) {
 	}
 }
 
-func bigNestedMaps(prefix string, nesting int) map[string]interface{} {
-	r := map[string]interface{}{}
+func bigNestedMaps(prefix string, nesting int) dict {
+	r := dict{}
 	for i := 0; i < 2; i++ {
 		r[fmt.Sprintf("%vtop%v", prefix, i)] = fmt.Sprintf("topval%v", i)
 		r[fmt.Sprintf("%vtopint%v", prefix, i)] = i
@@ -124,23 +124,23 @@ func TestContains(t *testing.T) {
 		},
 		{
 			v1: []string{"red", "green"},
-			v2: map[string]interface{}{"red": "green"},
+			v2: dict{"red": "green"},
 		},
 		{
-			v1: map[string]interface{}{"resource": map[string]interface{}{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": map[string]interface{}{"time": "night", "source": "east"}},
-			v2: map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"smart", "loud"}}},
+			v1: dict{"resource": dict{"id": 1, "color": "red", "tags": []string{"big", "loud"}}, "environment": dict{"time": "night", "source": "east"}},
+			v2: dict{"resource": dict{"tags": []string{"smart", "loud"}}},
 		},
 		{
-			v1:       map[string]interface{}{"color": "red"},
-			v2:       map[string]interface{}{"color": "red"},
+			v1:       dict{"color": "red"},
+			v2:       dict{"color": "red"},
 			expected: true,
 		},
 		{
-			v1: map[string]interface{}{"color": "green"},
-			v2: map[string]interface{}{"color": "red"},
+			v1: dict{"color": "green"},
+			v2: dict{"color": "red"},
 		},
 		{
-			v1: map[string]interface{}{"color": "green"},
+			v1: dict{"color": "green"},
 			v2: "color",
 		},
 		{
@@ -174,47 +174,47 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
-			v1:       map[string]interface{}{"color": "green", "flavor": "beef"},
-			v2:       map[string]interface{}{"color": "green"},
+			v1:       dict{"color": "green", "flavor": "beef"},
+			v2:       dict{"color": "green"},
 			expected: true,
 		},
 		{
-			v1:       map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
-			v2:       map[string]interface{}{"color": "green", "tags": []string{"hot"}},
+			v1:       dict{"color": "green", "tags": []string{"beef", "hot"}},
+			v2:       dict{"color": "green", "tags": []string{"hot"}},
 			expected: true,
 		},
 		{
-			v1: map[string]interface{}{"color": "green", "tags": []string{"beef", "hot"}},
-			v2: map[string]interface{}{"color": "green", "tags": []string{"cool"}},
+			v1: dict{"color": "green", "tags": []string{"beef", "hot"}},
+			v2: dict{"color": "green", "tags": []string{"cool"}},
 		},
 		{
-			v1: map[string]interface{}{
-				"resource": map[string]interface{}{
+			v1: dict{
+				"resource": dict{
 					"id":    1,
 					"color": "red",
 					"size":  6,
-					"labels": map[string]interface{}{
+					"labels": dict{
 						"region": "east",
 						"level":  "high",
 					},
 					"tags": []string{"trouble", "up", "down"},
 				},
-				"principal": map[string]interface{}{
+				"principal": dict{
 					"name":   "bob",
 					"role":   "admin",
 					"groups": []string{"officers", "gentlemen"},
 				},
 			},
-			v2: map[string]interface{}{
-				"resource": map[string]interface{}{
+			v2: dict{
+				"resource": dict{
 					"color": "red",
 					"size":  6,
-					"labels": map[string]interface{}{
+					"labels": dict{
 						"region": "east",
 					},
 					"tags": []interface{}{"up"},
 				},
-				"principal": map[string]interface{}{
+				"principal": dict{
 					"role":   "admin",
 					"groups": []interface{}{"officers"},
 				},
@@ -222,25 +222,25 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
-			v1: map[string]interface{}{
-				"resource": map[string]interface{}{
+			v1: dict{
+				"resource": dict{
 					"id":    1,
 					"color": "red",
 					"size":  6,
-					"labels": map[string]interface{}{
+					"labels": dict{
 						"region": "east",
 						"level":  "high",
 					},
 					"tags": []string{"trouble", "up", "down"},
 				},
-				"principal": map[string]interface{}{
+				"principal": dict{
 					"name":   "bob",
 					"role":   "admin",
 					"groups": []string{"officers", "gentlemen"},
 				},
 			},
-			v2: map[string]interface{}{
-				"resource": map[string]interface{}{
+			v2: dict{
+				"resource": dict{
 					"size": 7,
 				},
 			},
@@ -257,13 +257,13 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
-			v1:       map[string]interface{}{"story": "The quick brown fox"},
-			v2:       map[string]interface{}{"story": "quick brown"},
+			v1:       dict{"story": "The quick brown fox"},
+			v2:       dict{"story": "quick brown"},
 			expected: false,
 		},
 		{
-			v1:       map[string]interface{}{"story": "The quick brown fox"},
-			v2:       map[string]interface{}{"story": "quick brown"},
+			v1:       dict{"story": "The quick brown fox"},
+			v2:       dict{"story": "quick brown"},
 			options:  []ContainsOption{StringContains()},
 			expected: true,
 		},
@@ -279,31 +279,31 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
-			v1:       map[string]interface{}{"color": "blue"},
-			v2:       map[string]interface{}{"color": ""},
+			v1:       dict{"color": "blue"},
+			v2:       dict{"color": ""},
 			expected: false,
 		},
 		{
-			v1:       map[string]interface{}{"color": "blue"},
-			v2:       map[string]interface{}{"color": nil},
+			v1:       dict{"color": "blue"},
+			v2:       dict{"color": nil},
 			expected: false,
 		},
 		{
-			v1:       map[string]interface{}{"color": "blue"},
-			v2:       map[string]interface{}{"color": ""},
+			v1:       dict{"color": "blue"},
+			v2:       dict{"color": ""},
 			options:  []ContainsOption{EmptyMapValuesMatchAny()},
 			expected: true,
 		},
 		{
-			v1:       map[string]interface{}{"color": "blue"},
-			v2:       map[string]interface{}{"color": nil},
+			v1:       dict{"color": "blue"},
+			v2:       dict{"color": nil},
 			options:  []ContainsOption{EmptyMapValuesMatchAny()},
 			expected: true,
 		},
 		{
 			name:     "emptymapvaluemustmatchtype",
-			v1:       map[string]interface{}{"color": "blue"},
-			v2:       map[string]interface{}{"color": 0},
+			v1:       dict{"color": "blue"},
+			v2:       dict{"color": 0},
 			options:  []ContainsOption{EmptyMapValuesMatchAny()},
 			expected: false,
 		},
@@ -428,8 +428,8 @@ func TestContains(t *testing.T) {
 	}
 
 	t.Run("trace", func(t *testing.T) {
-		v1 := map[string]interface{}{"color": "red"}
-		v2 := map[string]interface{}{"color": "red"}
+		v1 := dict{"color": "red"}
+		v2 := dict{"color": "red"}
 		var trace string
 		Contains(v1, v2, Trace(&trace))
 		assert.Empty(t, trace, "trace should be empty if contains returned true")
@@ -441,107 +441,249 @@ func TestContains(t *testing.T) {
 			Contains(v1, v2, Trace(nil))
 		})
 
+		now := time.Date(1987, 2, 10, 6, 30, 15, 0, time.FixedZone("EST", -5*60*60))
+		nowCST := now.In(time.FixedZone("CST", -6*60*60))
+
 		tests := []struct {
 			v1, v2        interface{}
 			expectedTrace string
+			opts          []ContainsOption
 		}{
 			{v1: 1, v2: 2, expectedTrace: `
-v1 does not equal v2
+values are not equal
 v1 -> 1
 v2 -> 2`},
-			{v1: map[string]string{"color": "red"}, v2: 1, expectedTrace: `
-v1 type map[string]interface {} does not match v1 type float64
+			{v1: "red", v2: "blue", expectedTrace: `
+values are not equal
+v1 -> red
+v2 -> blue`},
+			{v1: "red", v2: 1, expectedTrace: `
+values are not equal
+v1 -> red
+v2 -> 1`},
+			{v1: true, v2: false, expectedTrace: `
+values are not equal
+v1 -> true
+v2 -> false`},
+			{v1: true, v2: nil, expectedTrace: `
+values are not equal
+v1 -> true
+v2 -> <nil>`},
+			{v1: nil, v2: false, expectedTrace: `
+values are not equal
+v1 -> <nil>
+v2 -> false`},
+			{v1: float64(1), v2: false, expectedTrace: `
+values are not equal
+v1 -> 1
+v2 -> false`},
+			{v1: float64(1), v2: float64(2), expectedTrace: `
+values are not equal
+v1 -> 1
+v2 -> 2`},
+			{v1: "red", v2: "blue", opts: []ContainsOption{StringContains()}, expectedTrace: `
+v1 does not contain v2
+v1 -> red
+v2 -> blue`},
+			{v1: dict{"color": "red"}, v2: 1, expectedTrace: `
+values are not equal
 v1 -> map[color:red]
 v2 -> 1`},
-			{v1: map[string]string{"color": "red"}, v2: map[string]string{"color": "blue"}, expectedTrace: `
-v1 does not equal v2
+			{v1: dict{"color": "red"}, v2: dict{"color": "blue"}, expectedTrace: `
+values are not equal
 v1.color -> red
 v2.color -> blue`},
-			{v1: map[string]interface{}{"color": map[string]string{"height": "tall"}}, v2: map[string]interface{}{"color": map[string]string{"height": "short"}}, expectedTrace: `
-v1 does not equal v2
+			{v1: dict{"color": dict{"height": "tall"}}, v2: dict{"color": dict{"height": "short"}}, expectedTrace: `
+values are not equal
 v1.color.height -> tall
 v2.color.height -> short`},
-			{v1: map[string]interface{}{"color": "blue"}, v2: map[string]interface{}{"size": "big"}, expectedTrace: `
-key "size" in v2 is not present in v1
+			{v1: dict{"color": "blue"}, v2: dict{"color": "blue", "size": "big", "flavor": "strawberry"}, expectedTrace: `
+v2 contains extra keys: [flavor size]
 v1 -> map[color:blue]
-v2 -> map[size:big]`},
+v2 -> map[color:blue flavor:strawberry size:big]`},
 			{v1: []int{1}, v2: []int{1, 2}, expectedTrace: `
-v1 does not contain "2"
+v1 does not contain v2[1]: "2"
 v1 -> [1]
 v2 -> [1 2]`},
-			{v1: map[string]interface{}{"colors": map[string]interface{}{"color": "red"}}, v2: map[string]interface{}{"colors": map[string]interface{}{"color": "blue"}},
+			{v1: []string{"red", "green"}, v2: "blue", expectedTrace: `
+v1 does not contain v2
+v1 -> [red green]
+v2 -> blue`},
+			{v1: dict{"colors": dict{"color": "red"}}, v2: dict{"colors": dict{"color": "blue"}},
 				expectedTrace: `
-v1 does not equal v2
+values are not equal
 v1.colors.color -> red
 v2.colors.color -> blue`},
+			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{ParseTimes()},
+				expectedTrace: `
+values are not equal
+v1.time -> 1987-02-10T06:30:15-05:00
+v2.time -> 1987-02-10T06:31:15-05:00`,
+			},
+			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{AllowTimeDelta(time.Second * 30)},
+				expectedTrace: `
+delta of 1m0s exceeds 30s
+v1.time -> 1987-02-10T06:30:15-05:00
+v2.time -> 1987-02-10T06:31:15-05:00`,
+			},
+			{v1: dict{"time": now}, v2: dict{"time": nowCST}, opts: []ContainsOption{ParseTimes()},
+				expectedTrace: `
+time zone offsets don't match
+v1.time -> 1987-02-10T06:30:15-05:00
+v2.time -> 1987-02-10T05:30:15-06:00`,
+			},
 		}
 		for _, test := range tests {
 			t.Run("", func(t *testing.T) {
 				var trace string
-				Contains(test.v1, test.v2, Trace(&trace))
+				Contains(test.v1, test.v2, append(test.opts, Trace(&trace))...)
 				t.Log(trace)
 				// strip off the leading new line.  Only there to make the test more readable
 				assert.Equal(t, test.expectedTrace[1:], trace)
 			})
 		}
 	})
-
 }
+
+func TestContainsEx(t *testing.T) {
+	w1 := Widget{
+		Size:  1,
+		Color: "red",
+	}
+	w2 := Widget{
+		Size:  1,
+		Color: "red",
+	}
+
+	result, v1, v2 := ContainsEx(w1, w2)
+	assert.True(t, result)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+
+	w1.Color = "redblue"
+	result, v1, v2 = ContainsEx(w1, w2)
+	assert.False(t, result)
+	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, v1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+
+	result, _, _ = ContainsEx(w1, w2, StringContains())
+	assert.True(t, result)
+}
+
+func TestEquivalent(t *testing.T) {
+	v1 := dict{"size": 1, "color": "big", "flavor": "mint"}
+	v2 := Widget{
+		Size:  1,
+		Color: "big",
+	}
+	assert.True(t, Contains(v1, v2))
+
+	var trace string
+	assert.False(t, Equivalent(v1, v2, Trace(&trace)))
+
+	assert.Equal(t, `v1 contains extra keys: [flavor]
+v1 -> map[color:big flavor:mint size:1]
+v2 -> map[color:big size:1]`, trace)
+
+	// inverse should also be false
+	assert.False(t, Equivalent(v2, v1))
+
+	v1 = dict{"size": 1, "color": "big"}
+	assert.True(t, Equivalent(v1, v2))
+	assert.True(t, Equivalent(v2, v1))
+
+	// StringContains should work too, ignoring the inverse comparison
+	v1["color"] = "bigred"
+	assert.False(t, Equivalent(v1, v2))
+	assert.True(t, Equivalent(v1, v2, StringContains()))
+
+	// EmptyValuesMatchAny should also work, like StringContains
+	v2.Color = ""
+	assert.False(t, Equivalent(v1, v2))
+	assert.True(t, Equivalent(v1, v2, EmptyValuesMatchAny()))
+}
+
+func TestEquivalentEx(t *testing.T) {
+	w1 := Widget{
+		Size:  1,
+		Color: "red",
+	}
+	w2 := Widget{
+		Size:  1,
+		Color: "red",
+	}
+
+	result, v1, v2 := EquivalentEx(w1, w2)
+	assert.True(t, result)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+
+	w1.Color = "redblue"
+	result, v1, v2 = EquivalentEx(w1, w2)
+	assert.False(t, result)
+	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, v1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+
+	result, _, _ = EquivalentEx(w1, w2, StringContains())
+	assert.True(t, result)
+}
+
+type dict = map[string]interface{}
 
 func TestConflicts(t *testing.T) {
 	tests := []struct {
-		m1, m2   map[string]interface{}
+		m1, m2   dict
 		expected bool
 	}{
 		{
-			map[string]interface{}{"color": "red"},
-			map[string]interface{}{"temp": "hot"},
+			dict{"color": "red"},
+			dict{"temp": "hot"},
 			false,
 		},
 		{
-			map[string]interface{}{"color": "red"},
-			map[string]interface{}{"color": "blue"},
+			dict{"color": "red"},
+			dict{"color": "blue"},
 			true,
 		},
 		{
-			map[string]interface{}{"color": "red"},
-			map[string]interface{}{"temp": "hot", "color": "red"},
+			dict{"color": "red"},
+			dict{"temp": "hot", "color": "red"},
 			false,
 		},
 		{
-			map[string]interface{}{
-				"labels": map[string]interface{}{"region": "west"},
+			dict{
+				"labels": dict{"region": "west"},
 			},
-			map[string]interface{}{
+			dict{
 				"temp":   "hot",
-				"labels": map[string]interface{}{"region": "west"},
+				"labels": dict{"region": "west"},
 			},
 			false,
 		},
 		{
-			map[string]interface{}{
-				"labels": map[string]interface{}{"region": "east"},
+			dict{
+				"labels": dict{"region": "east"},
 			},
-			map[string]interface{}{
+			dict{
 				"temp":   "hot",
-				"labels": map[string]interface{}{"region": "west"},
+				"labels": dict{"region": "west"},
 			},
 			true,
 		},
 		{
-			map[string]interface{}{
+			dict{
 				"tags": []string{"green", "red"},
 			},
-			map[string]interface{}{
+			dict{
 				"tags": []string{"orange", "black"},
 			},
 			false,
 		},
 		{
-			map[string]interface{}{
+			dict{
 				"tags": []string{"green", "red"},
 			},
-			map[string]interface{}{
+			dict{
 				"tags": []string{"orange", "black", "red"},
 			},
 			false,
@@ -557,7 +699,7 @@ func TestConflicts(t *testing.T) {
 }
 
 func BenchmarkBigMerge(b *testing.B) {
-	m1 := map[string]interface{}{}
+	m1 := dict{}
 	m1["matches"] = bigNestedMaps("color", 5)
 	m1["notmatches"] = bigNestedMaps("weather", 5)
 	s1 := []interface{}{}
@@ -565,7 +707,7 @@ func BenchmarkBigMerge(b *testing.B) {
 		s1 = append(s1, bigNestedMaps(fmt.Sprintf("food%v", i), 3))
 	}
 	m1["slice"] = s1
-	m2 := map[string]interface{}{}
+	m2 := dict{}
 	m2["matches"] = bigNestedMaps("color", 5)
 	m2["notmatches"] = bigNestedMaps("cars", 5)
 	s2 := []interface{}{}
@@ -581,21 +723,21 @@ func BenchmarkBigMerge(b *testing.B) {
 
 func BenchmarkMerge(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		Merge(map[string]interface{}{
-			"colors": map[string]interface{}{
+		Merge(dict{
+			"colors": dict{
 				"warm": "orange",
 			},
-			"numbers": map[string]interface{}{
+			"numbers": dict{
 				"odd":  3,
 				"even": 4,
 			},
-		}, map[string]interface{}{
+		}, dict{
 			"hot": "roof",
-			"colors": map[string]interface{}{
+			"colors": dict{
 				"warm": "red",
 				"cool": "blue",
 			},
-			"flavors": map[string]interface{}{
+			"flavors": dict{
 				"sweet": "chocolate",
 			},
 		},
@@ -603,7 +745,7 @@ func BenchmarkMerge(b *testing.B) {
 	}
 }
 
-func toMap(s string) (out map[string]interface{}) {
+func toMap(s string) (out dict) {
 	if err := json.Unmarshal([]byte(s), &out); err != nil {
 		panic(err)
 	}
@@ -628,17 +770,17 @@ func TestNormalize(t *testing.T) {
 		{in: float64(10), out: float64(10)},
 		{in: float32(12), out: float64(12)},
 		{in: true, out: true},
-		{in: map[string]interface{}{"red": "green"}, out: map[string]interface{}{"red": "green"}},
+		{in: dict{"red": "green"}, out: dict{"red": "green"}},
 		{in: []interface{}{"red", 4}, out: []interface{}{"red", float64(4)}},
 		{in: []string{"red", "green"}, out: []interface{}{"red", "green"}},
 		// hits the marshaling path
-		{in: &Widget{5, "red"}, out: map[string]interface{}{"size": float64(5), "color": "red"}},
+		{in: &Widget{5, "red"}, out: dict{"size": float64(5), "color": "red"}},
 		// marshaling might occur deep
-		{in: map[string]interface{}{"widget": &Widget{5, "red"}}, out: map[string]interface{}{"widget": map[string]interface{}{"size": float64(5), "color": "red"}}},
+		{in: dict{"widget": &Widget{5, "red"}}, out: dict{"widget": dict{"size": float64(5), "color": "red"}}},
 		{
 			name: "marshaller",
 			in:   json.RawMessage(`{"color":"blue"}`),
-			out:  map[string]interface{}{"color": "blue"},
+			out:  dict{"color": "blue"},
 			opts: &NormalizeOptions{Marshal: true},
 		},
 	}
@@ -665,12 +807,12 @@ func TestGet(t *testing.T) {
 	}{
 		{5, 5, ""},
 		{[]string{"red"}, "red", "[0]"},
-		{map[string]interface{}{"color": "red"}, "red", "color"},
-		{map[string]interface{}{"tags": []string{"red", "green"}}, "green", "tags[1]"},
-		{map[string]interface{}{"tags": []string{"red", "green"}}, "red", "tags[0]"},
-		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, "red", "resource.tags[0]"},
-		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, []string{"red", "green"}, "resource.tags"},
-		{map[string]interface{}{"resource": map[string]interface{}{"tags": []string{"red", "green"}}}, map[string]interface{}{"tags": []string{"red", "green"}}, "resource"},
+		{dict{"color": "red"}, "red", "color"},
+		{dict{"tags": []string{"red", "green"}}, "green", "tags[1]"},
+		{dict{"tags": []string{"red", "green"}}, "red", "tags[0]"},
+		{dict{"resource": dict{"tags": []string{"red", "green"}}}, "red", "resource.tags[0]"},
+		{dict{"resource": dict{"tags": []string{"red", "green"}}}, []string{"red", "green"}, "resource.tags"},
+		{dict{"resource": dict{"tags": []string{"red", "green"}}}, dict{"tags": []string{"red", "green"}}, "resource"},
 	}
 	for _, test := range tests {
 		result, err := Get(test.v, test.path)
@@ -684,12 +826,12 @@ func TestGet(t *testing.T) {
 		path, msg string
 		kind      error
 	}{
-		{map[string]interface{}{"tags": []string{"red", "green"}}, "tags[2]", "Index out of bounds at tags[2] (len = 2)", IndexOutOfBoundsError},
+		{dict{"tags": []string{"red", "green"}}, "tags[2]", "Index out of bounds at tags[2] (len = 2)", IndexOutOfBoundsError},
 		{[]string{"red", "green"}, "[2]", "Index out of bounds at [2] (len = 2)", IndexOutOfBoundsError},
-		{map[string]interface{}{"tags": "red"}, "tags[2]", "tags is not a slice", PathNotSliceError},
-		{map[string]interface{}{"tags": "red"}, "[2]", "v is not a slice", PathNotSliceError},
+		{dict{"tags": "red"}, "tags[2]", "tags is not a slice", PathNotSliceError},
+		{dict{"tags": "red"}, "[2]", "v is not a slice", PathNotSliceError},
 		{[]string{"red", "green"}, "tags[2]", "v is not a map", PathNotMapError},
-		{map[string]interface{}{"tags": "red"}, "color", "color not found", PathNotFoundError},
+		{dict{"tags": "red"}, "color", "color not found", PathNotFoundError},
 	}
 	for _, test := range errorTests {
 		_, err := Get(test.v, test.path)
@@ -713,7 +855,7 @@ func TestEmpty(t *testing.T) {
 	}
 	var s St
 	emptyTests := []interface{}{
-		nil, "", "  ", map[string]interface{}{},
+		nil, "", "  ", dict{},
 		[]interface{}{}, map[string]string{},
 		[]string{},
 		ptr,
@@ -748,7 +890,7 @@ func TestEmpty(t *testing.T) {
 	}
 	notEmptyTests := []interface{}{
 		5, float64(5), true,
-		"asdf", " asdf ", map[string]interface{}{"color": "red"},
+		"asdf", " asdf ", dict{"color": "red"},
 		map[string]string{"color": "red"}, []interface{}{"color", "red"},
 		[]string{"green", "red"}, &Widget{Color: "blue"}, Widget{Color: "red"},
 		func() {}, &Widget{},
@@ -774,7 +916,7 @@ func TestInternalNormalize(t *testing.T) {
 }
 
 func TestTransform(t *testing.T) {
-	in := map[string]interface{}{
+	in := dict{
 		"color": "red",
 		"size":  5,
 		"tags": []interface{}{
@@ -782,7 +924,7 @@ func TestTransform(t *testing.T) {
 			false,
 			nil,
 		},
-		"labels": map[string]interface{}{
+		"labels": dict{
 			"region": "east",
 		},
 	}
@@ -792,7 +934,7 @@ func TestTransform(t *testing.T) {
 		}
 		return in, nil
 	}
-	expected := map[string]interface{}{
+	expected := dict{
 		"color": "reds",
 		"size":  float64(5),
 		"tags": []interface{}{
@@ -800,7 +942,7 @@ func TestTransform(t *testing.T) {
 			false,
 			nil,
 		},
-		"labels": map[string]interface{}{
+		"labels": dict{
 			"region": "easts",
 		},
 	}
@@ -821,7 +963,7 @@ func TestTransform(t *testing.T) {
 	// I can transform the maps and slices at the top level too
 	transformer = func(in interface{}) (interface{}, error) {
 		switch t := in.(type) {
-		case map[string]interface{}:
+		case dict:
 			delete(t, "labels")
 		case []interface{}:
 			in = append(t, "dogs")
@@ -829,7 +971,7 @@ func TestTransform(t *testing.T) {
 		return in, nil
 	}
 
-	expected = map[string]interface{}{
+	expected = dict{
 		"color": "reds",
 		"size":  float64(5),
 		"tags": []interface{}{
@@ -889,7 +1031,7 @@ func BenchmarkMarshal(b *testing.B) {
 }
 
 func BenchmarkAvoidMarshal(b *testing.B) {
-	s := map[string]interface{}{
+	s := dict{
 		"Map": map[string]string{
 			"color": "blue",
 		},
