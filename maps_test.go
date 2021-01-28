@@ -555,19 +555,19 @@ func TestContainsEx(t *testing.T) {
 		Color: "red",
 	}
 
-	result, v1, v2 := ContainsEx(w1, w2)
-	assert.True(t, result)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+	m := ContainsMatch(w1, w2)
+	assert.True(t, m.Matches)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	w1.Color = "redblue"
-	result, v1, v2 = ContainsEx(w1, w2)
-	assert.False(t, result)
-	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, v1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+	m = ContainsMatch(w1, w2)
+	assert.False(t, m.Matches)
+	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
-	result, _, _ = ContainsEx(w1, w2, StringContains())
-	assert.True(t, result)
+	m = ContainsMatch(w1, w2, StringContains())
+	assert.True(t, m.Matches)
 }
 
 func TestEquivalent(t *testing.T) {
@@ -613,19 +613,19 @@ func TestEquivalentEx(t *testing.T) {
 		Color: "red",
 	}
 
-	result, v1, v2 := EquivalentEx(w1, w2)
-	assert.True(t, result)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+	m := EquivalentMatch(w1, w2)
+	assert.True(t, m.Matches)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	w1.Color = "redblue"
-	result, v1, v2 = EquivalentEx(w1, w2)
-	assert.False(t, result)
-	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, v1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, v2)
+	m = EquivalentMatch(w1, w2)
+	assert.False(t, m.Matches)
+	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
+	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
-	result, _, _ = EquivalentEx(w1, w2, StringContains())
-	assert.True(t, result)
+	m = EquivalentMatch(w1, w2, StringContains())
+	assert.True(t, m.Matches)
 }
 
 type dict = map[string]interface{}
