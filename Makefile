@@ -4,6 +4,12 @@ all: fmt lint cover
 fmt:
 	go fmt ./...
 
+proto:
+	(cd proto && \
+	protoc -I . \
+	--go_out=plugins=grpc:. \
+	simple.proto)
+
 lint:
 	golint ./...
 
@@ -33,4 +39,4 @@ tools:
 	go get -u golang.org/x/tools/cmd/cover
 	go get -u golang.org/x/lint/golint
 
-.PHONY: all fmt lint vet test cover build clean ensure update tools
+.PHONY: all fmt lint vet test cover build clean ensure update tools proto

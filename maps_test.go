@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ansel1/merry"
+	"github.com/ansel1/vespucci/v4/proto"
 	"github.com/k0kubun/pp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -543,6 +544,17 @@ v2.time -> 1987-02-10T05:30:15-06:00`,
 			})
 		}
 	})
+}
+
+func TestNormalize_proto(t *testing.T) {
+	s := proto.Sample{
+		Name:      "frank",
+		IsEnabled: true,
+	}
+
+	v, err := Normalize(&s)
+	require.NoError(t, err)
+	assert.Equal(t, dict{"name": "frank", "active": true}, v)
 }
 
 func TestContainsMatch(t *testing.T) {

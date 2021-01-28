@@ -12,6 +12,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ansel1/merry"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 	"reflect"
 	"sort"
 	"strconv"
@@ -714,12 +716,19 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 	return
 }
 
+func marshal(v interface{}) ([]byte, error) {
+	if msg, ok := v.(proto.Message); ok {
+		return protojson.Marshal(msg)
+	}
+	return json.Marshal(v)
+}
+
 func slowNormalize(v interface{}) (interface{}, error) {
-	var b []byte
-	b, err := json.Marshal(v)
+	b, err := marshal(v)
 	if err != nil {
 		return nil, err
 	}
+
 	var v2 interface{}
 	err = json.Unmarshal(b, &v2)
 	return v2, err

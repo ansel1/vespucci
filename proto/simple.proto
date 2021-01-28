@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package simple;
+
+option go_package = ".;proto";
+
+message Sample {
+  string name = 1;
+  bool is_enabled = 2 [json_name="active"];
+}
