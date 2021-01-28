@@ -1,12 +1,14 @@
 package mapstest
 
 import (
+	"fmt"
 	maps "github.com/ansel1/vespucci/v4"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 type mockTestingT struct {
+	msg       string
 	failed    bool
 	failedNow bool
 }
@@ -15,7 +17,8 @@ func (m *mockTestingT) Logf(_ string, _ ...interface{}) {
 
 }
 
-func (m *mockTestingT) Errorf(_ string, _ ...interface{}) {
+func (m *mockTestingT) Errorf(s string, a ...interface{}) {
+	m.msg = fmt.Sprintf(s, a...)
 	m.failed = true
 }
 

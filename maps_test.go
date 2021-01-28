@@ -456,11 +456,11 @@ v1 -> 1
 v2 -> 2`},
 			{v1: "red", v2: "blue", expectedTrace: `
 values are not equal
-v1 -> red
-v2 -> blue`},
+v1 -> "red"
+v2 -> "blue"`},
 			{v1: "red", v2: 1, expectedTrace: `
 values are not equal
-v1 -> red
+v1 -> "red"
 v2 -> 1`},
 			{v1: true, v2: false, expectedTrace: `
 values are not equal
@@ -484,54 +484,54 @@ v1 -> 1
 v2 -> 2`},
 			{v1: "red", v2: "blue", opts: []ContainsOption{StringContains()}, expectedTrace: `
 v1 does not contain v2
-v1 -> red
-v2 -> blue`},
+v1 -> "red"
+v2 -> "blue"`},
 			{v1: dict{"color": "red"}, v2: 1, expectedTrace: `
 values are not equal
-v1 -> map[color:red]
+v1 -> map[string]interface {}{"color":"red"}
 v2 -> 1`},
 			{v1: dict{"color": "red"}, v2: dict{"color": "blue"}, expectedTrace: `
 values are not equal
-v1.color -> red
-v2.color -> blue`},
+v1.color -> "red"
+v2.color -> "blue"`},
 			{v1: dict{"color": dict{"height": "tall"}}, v2: dict{"color": dict{"height": "short"}}, expectedTrace: `
 values are not equal
-v1.color.height -> tall
-v2.color.height -> short`},
+v1.color.height -> "tall"
+v2.color.height -> "short"`},
 			{v1: dict{"color": "blue"}, v2: dict{"color": "blue", "size": "big", "flavor": "strawberry"}, expectedTrace: `
 v2 contains extra keys: [flavor size]
-v1 -> map[color:blue]
-v2 -> map[color:blue flavor:strawberry size:big]`},
+v1 -> map[string]interface {}{"color":"blue"}
+v2 -> map[string]interface {}{"color":"blue", "flavor":"strawberry", "size":"big"}`},
 			{v1: []int{1}, v2: []int{1, 2}, expectedTrace: `
 v1 does not contain v2[1]: "2"
-v1 -> [1]
-v2 -> [1 2]`},
+v1 -> []interface {}{1}
+v2 -> []interface {}{1, 2}`},
 			{v1: []string{"red", "green"}, v2: "blue", expectedTrace: `
 v1 does not contain v2
-v1 -> [red green]
-v2 -> blue`},
+v1 -> []interface {}{"red", "green"}
+v2 -> "blue"`},
 			{v1: dict{"colors": dict{"color": "red"}}, v2: dict{"colors": dict{"color": "blue"}},
 				expectedTrace: `
 values are not equal
-v1.colors.color -> red
-v2.colors.color -> blue`},
+v1.colors.color -> "red"
+v2.colors.color -> "blue"`},
 			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{ParseTimes()},
 				expectedTrace: `
 values are not equal
-v1.time -> 1987-02-10T06:30:15-05:00
-v2.time -> 1987-02-10T06:31:15-05:00`,
+v1.time -> "1987-02-10T06:30:15-05:00"
+v2.time -> "1987-02-10T06:31:15-05:00"`,
 			},
 			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{AllowTimeDelta(time.Second * 30)},
 				expectedTrace: `
 delta of 1m0s exceeds 30s
-v1.time -> 1987-02-10T06:30:15-05:00
-v2.time -> 1987-02-10T06:31:15-05:00`,
+v1.time -> "1987-02-10T06:30:15-05:00"
+v2.time -> "1987-02-10T06:31:15-05:00"`,
 			},
 			{v1: dict{"time": now}, v2: dict{"time": nowCST}, opts: []ContainsOption{ParseTimes()},
 				expectedTrace: `
 time zone offsets don't match
-v1.time -> 1987-02-10T06:30:15-05:00
-v2.time -> 1987-02-10T05:30:15-06:00`,
+v1.time -> "1987-02-10T06:30:15-05:00"
+v2.time -> "1987-02-10T05:30:15-06:00"`,
 			},
 		}
 		for _, test := range tests {
@@ -569,12 +569,14 @@ func TestContainsMatch(t *testing.T) {
 
 	m := ContainsMatch(w1, w2)
 	assert.True(t, m.Matches)
+	assert.Empty(t, m.Message)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	w1.Color = "redblue"
 	m = ContainsMatch(w1, w2)
 	assert.False(t, m.Matches)
+	assert.NotEmpty(t, m.Message)
 	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
@@ -594,8 +596,8 @@ func TestEquivalent(t *testing.T) {
 	assert.False(t, Equivalent(v1, v2, Trace(&trace)))
 
 	assert.Equal(t, `v1 contains extra keys: [flavor]
-v1 -> map[color:big flavor:mint size:1]
-v2 -> map[color:big size:1]`, trace)
+v1 -> map[string]interface {}{"color":"big", "flavor":"mint", "size":1}
+v2 -> map[string]interface {}{"color":"big", "size":1}`, trace)
 
 	// inverse should also be false
 	assert.False(t, Equivalent(v2, v1))
@@ -627,12 +629,14 @@ func TestEquivalentMatch(t *testing.T) {
 
 	m := EquivalentMatch(w1, w2)
 	assert.True(t, m.Matches)
+	assert.Empty(t, m.Message)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	w1.Color = "redblue"
 	m = EquivalentMatch(w1, w2)
 	assert.False(t, m.Matches)
+	assert.NotEmpty(t, m.Message)
 	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
 	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 

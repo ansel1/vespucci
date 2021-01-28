@@ -43,8 +43,9 @@ func AssertContains(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...interface{
 	}
 
 	if !match.Matches {
+		diff := containsDiff(match.V1, match.V2)
 		return assert.Fail(t, fmt.Sprintf("v1 does not contain v2: \n"+
-			"%s%s", match.Message, containsDiff(match.V2, match.V2)), optsMsgAndArgs...)
+			"%s%s", match.Message, diff), optsMsgAndArgs...)
 	}
 
 	return true
@@ -96,7 +97,7 @@ func AssertEquivalent(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...interfac
 
 	if !match.Matches {
 		return assert.Fail(t, fmt.Sprintf("v1 !≈ v2: \n"+
-			"%s%s", match.Message, containsDiff(match.V2, match.V2)), optsMsgAndArgs...)
+			"%s%s", match.Message, containsDiff(match.V1, match.V2)), optsMsgAndArgs...)
 	}
 
 	return true
@@ -163,15 +164,17 @@ func RequireNotEquivalent(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...inte
 	}
 }
 
+var spewC = spew.ConfigState{
+	Indent:                  " ",
+	DisablePointerAddresses: true,
+	DisableCapacities:       true,
+	SortKeys:                true,
+}
+
 // containsDiff returns a diff of both values as long as both are of the same type and
 // are a struct, map, slice or array. Otherwise it returns an empty string.
 func containsDiff(v1 interface{}, v2 interface{}) string {
-	spewC := spew.ConfigState{
-		Indent:                  " ",
-		DisablePointerAddresses: true,
-		DisableCapacities:       true,
-		SortKeys:                true,
-	}
+
 	e := spewC.Sdump(v1)
 	a := spewC.Sdump(v2)
 
