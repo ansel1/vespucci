@@ -545,7 +545,7 @@ v2.time -> 1987-02-10T05:30:15-06:00`,
 	})
 }
 
-func TestContainsEx(t *testing.T) {
+func TestContainsMatch(t *testing.T) {
 	w1 := Widget{
 		Size:  1,
 		Color: "red",
@@ -603,7 +603,7 @@ v2 -> map[color:big size:1]`, trace)
 	assert.True(t, Equivalent(v1, v2, EmptyValuesMatchAny()))
 }
 
-func TestEquivalentEx(t *testing.T) {
+func TestEquivalentMatch(t *testing.T) {
 	w1 := Widget{
 		Size:  1,
 		Color: "red",
