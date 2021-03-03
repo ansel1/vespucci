@@ -243,7 +243,7 @@ func RoundTimes(d time.Duration) ContainsOption {
 func IgnoreTimeZones(b bool) ContainsOption {
 	return func(o *containsOptions) {
 		o.parseTimes = true
-		o.ignoreTimeZone = true
+		o.ignoreTimeZone = b
 	}
 }
 
@@ -485,6 +485,7 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 					}
 					if tm1.Location() != tm2.Location() {
 						ctx.traceMsg(`time zone offsets don't match`, v1, v2)
+						return false
 					}
 					return true
 				}
@@ -499,6 +500,7 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			}
 			if !strings.Contains(match, against) {
 				ctx.traceMsg(`v1 does not contain v2`, v1, v2)
+				return false
 			}
 			return true
 		}

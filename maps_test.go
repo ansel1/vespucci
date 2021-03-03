@@ -280,6 +280,12 @@ func TestContains(t *testing.T) {
 			expected: true,
 		},
 		{
+			v1:       "red",
+			v2:       "green",
+			options:  []ContainsOption{StringContains()},
+			expected: false,
+		},
+		{
 			v1:       dict{"color": "blue"},
 			v2:       dict{"color": ""},
 			expected: false,
@@ -380,27 +386,27 @@ func TestContains(t *testing.T) {
 		},
 		{
 			name:     "timezones",
-			v1:       t1.In(time.FixedZone("test", -3)),
+			v1:       t1.In(time.FixedZone("test", -3*60*60)),
 			v2:       t1.UTC(),
 			options:  []ContainsOption{},
 			expected: false,
 		},
 		{
-			name:     "timezones",
-			v1:       t1.In(time.FixedZone("test", -3)),
+			name:     "timezones parsed",
+			v1:       t1.In(time.FixedZone("test", -3*60*60)),
 			v2:       t1.UTC(),
 			options:  []ContainsOption{ParseTimes()},
 			expected: false,
 		},
 		{
-			name:     "timezones",
-			v1:       t1.In(time.FixedZone("test", -3)),
+			name:     "not ignore timezones",
+			v1:       t1.In(time.FixedZone("test", -3*60*60)),
 			v2:       t1.UTC(),
 			options:  []ContainsOption{IgnoreTimeZones(false)},
 			expected: false,
 		},
 		{
-			name:     "timezonesutc",
+			name:     "ignore timezones",
 			v1:       t1.In(time.FixedZone("test", -3*60*60)),
 			v2:       t1.UTC(),
 			options:  []ContainsOption{IgnoreTimeZones(true)},
@@ -774,6 +780,21 @@ type Widget struct {
 }
 
 func TestNormalize(t *testing.T) {
+	t1 := time.Date(1990, 11, 23, 2, 2, 2, 2, time.FixedZone("testzone", -3*60*60))
+
+	n1, err := Normalize(t1)
+	require.NoError(t, err)
+
+	n2, err := Normalize(t1.UTC())
+	require.NoError(t, err)
+
+	m1, err := time.Parse(time.RFC3339Nano, n1.(string))
+	require.NoError(t, err)
+	m2, err := time.Parse(time.RFC3339Nano, n2.(string))
+	require.NoError(t, err)
+
+	assert.Zero(t, m1.Sub(m2))
+
 	tests := []struct {
 		name    string
 		in, out interface{}
@@ -799,6 +820,8 @@ func TestNormalize(t *testing.T) {
 			out:  dict{"color": "blue"},
 			opts: &NormalizeOptions{Marshal: true},
 		},
+		{in: t1, out: "1990-11-23T02:02:02.000000002-03:00"},
+		{in: t1.UTC(), out: "1990-11-23T05:02:02.000000002Z"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
