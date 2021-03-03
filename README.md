@@ -1,7 +1,7 @@
 # vespucci [![Build Status](https://travis-ci.org/ansel1/vespucci.svg?branch=master)](https://travis-ci.org/ansel1/vespucci)
 
 vespucci implements utility functions for transforming values into a representation
-using only the simple types used in golang's mapping of to JSON:
+using only the simple types used in golang's mapping to JSON:
 
 - map[string]interface{}
 - []interface{}
