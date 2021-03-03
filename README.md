@@ -1,4 +1,7 @@
-# vespucci [![Build Status](https://travis-ci.org/ansel1/vespucci.svg?branch=master)](https://travis-ci.org/ansel1/vespucci)
+# vespucci 
+[![Build](https://github.com/ansel1/vespucci/workflows/Build/badge.svg)](https://github.com/ansel1/vespucci/actions?query=branch%3Amaster+workflow%3ABuild+) 
+[![GoDoc](https://godoc.org/github.com/ansel1/vespucci/v4?status.png)](https://godoc.org/github.com/ansel1/vespucci/v4) 
+[![Go Report Card](https://goreportcard.com/badge/github.com/ansel1/vespucci/v4)](https://goreportcard.com/report/github.com/ansel1/vespucci/v4)
 
 vespucci implements utility functions for transforming values into a representation
 using only the simple types used in golang's mapping to JSON:
