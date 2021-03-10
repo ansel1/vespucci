@@ -953,6 +953,8 @@ func Empty(v interface{}) bool {
 		return t == 0
 	case uintptr:
 		return t == 0
+	case time.Time:
+		return t.IsZero()
 	case string:
 		return len(strings.TrimSpace(t)) == 0
 	case map[string]interface{}:

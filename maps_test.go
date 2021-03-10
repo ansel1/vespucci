@@ -884,6 +884,7 @@ type holder struct {
 }
 
 func TestEmpty(t *testing.T) {
+	var num int
 	var ptr *Widget
 	var nilPtr *Widget
 	nilPtr = nil
@@ -920,7 +921,9 @@ func TestEmpty(t *testing.T) {
 		Widget{},
 		s,
 		St{},
-
+		time.Time{},
+		(*int)(nil),
+		num,
 		make(chan string),
 		holder{},
 	}
@@ -934,6 +937,9 @@ func TestEmpty(t *testing.T) {
 		[]string{"green", "red"}, &Widget{Color: "blue"}, Widget{Color: "red"},
 		func() {}, &Widget{},
 		holder{i: Widget{}},
+		time.Now(),
+		&time.Time{},
+		&num,
 	}
 	for _, v := range notEmptyTests {
 		assert.False(t, Empty(v), "v = %#v", v)
