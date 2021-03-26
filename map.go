@@ -112,7 +112,7 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 var ErrStop = errors.New("stop")
 
 func transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
-	v, _ = normalize(v, false, true, false)
+	v, _ = normalize(v, true, true, false)
 	var err error
 	v, err = transformer(v)
 	if err != nil {
@@ -329,8 +329,8 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 
-	nv1, err1 := normalize(v1, false, true, true)
-	nv2, err2 := normalize(v2, false, true, true)
+	nv1, err1 := normalize(v1, true, true, true)
+	nv2, err2 := normalize(v2, true, true, true)
 
 	return Match{
 		Matches:          contains(nv1, nv2, &ctx),
@@ -365,8 +365,8 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 
-	nv1, err1 := normalize(v1, false, true, true)
-	nv2, err2 := normalize(v2, false, true, true)
+	nv1, err1 := normalize(v1, true, true, true)
+	nv2, err2 := normalize(v2, true, true, true)
 
 	return Match{
 		Matches:          contains(nv1, nv2, &ctx) && containsInverted(nv1, nv2, &ctx),
@@ -863,7 +863,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 	for i, part := range parsedPath {
 		switch t := part.(type) {
 		case string:
-			out, err = normalize(out, false, true, false)
+			out, err = normalize(out, true, true, false)
 			if err != nil {
 				return nil, err
 			}
@@ -880,7 +880,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 			}
 		case int:
 			// slice index
-			out, err = normalize(out, false, true, false)
+			out, err = normalize(out, true, true, false)
 			if err != nil {
 				return nil, err
 			}
