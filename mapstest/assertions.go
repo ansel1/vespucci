@@ -38,12 +38,16 @@ func AssertContains(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...interface{
 	opts, optsMsgAndArgs := splitOptions(optsMsgAndArgs)
 	match := maps.ContainsMatch(v1, v2, opts...)
 
-	if !assert.NoError(t, match.V1NormalizeError, "error normalizing v1") || !assert.NoError(t, match.V2NormalizeError, "error normalizing v2") {
-		return false
-	}
-
 	if !match.Matches {
-		diff := containsDiff(match.V1, match.V2)
+		nv1, err := maps.Normalize(v1)
+		if assert.NoError(t, err, "error normalizing v1") {
+			v1 = nv1
+		}
+		nv2, err := maps.Normalize(v2)
+		if !assert.NoError(t, err, "error normalizing v2") {
+			v2 = nv2
+		}
+		diff := containsDiff(v1, v2)
 		return assert.Fail(t, fmt.Sprintf("v1 does not contain v2: \n"+
 			"%s%s", match.Message, diff), optsMsgAndArgs...)
 	}
@@ -59,14 +63,18 @@ func AssertNotContains(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...interfa
 	opts, optsMsgAndArgs := splitOptions(optsMsgAndArgs)
 	match := maps.ContainsMatch(v1, v2, opts...)
 
-	if !assert.NoError(t, match.V1NormalizeError, "error normalizing v1") || !assert.NoError(t, match.V2NormalizeError, "error normalizing v2") {
-		return false
-	}
-
 	if match.Matches {
+		nv1, err := maps.Normalize(v1)
+		if assert.NoError(t, err, "error normalizing v1") {
+			v1 = nv1
+		}
+		nv2, err := maps.Normalize(v2)
+		if assert.NoError(t, err, "error normalizing v2") {
+			v2 = nv2
+		}
 		return assert.Fail(t, fmt.Sprintf("v1 should not contain v2: \n"+
 			"v1: %+v\n"+
-			"v2: %+v", match.V1, match.V2), optsMsgAndArgs...)
+			"v2: %+v", v1, v2), optsMsgAndArgs...)
 	}
 
 	return true
@@ -91,13 +99,17 @@ func AssertEquivalent(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...interfac
 	opts, optsMsgAndArgs := splitOptions(optsMsgAndArgs)
 	match := maps.EquivalentMatch(v1, v2, opts...)
 
-	if !assert.NoError(t, match.V1NormalizeError, "error normalizing v1") || !assert.NoError(t, match.V2NormalizeError, "error normalizing v2") {
-		return false
-	}
-
 	if !match.Matches {
+		nv1, err := maps.Normalize(v1)
+		if assert.NoError(t, err, "error normalizing v1") {
+			v1 = nv1
+		}
+		nv2, err := maps.Normalize(v2)
+		if assert.NoError(t, err, "error normalizing v2") {
+			v2 = nv2
+		}
 		return assert.Fail(t, fmt.Sprintf("v1 !≈ v2: \n"+
-			"%s%s", match.Message, containsDiff(match.V1, match.V2)), optsMsgAndArgs...)
+			"%s%s", match.Message, containsDiff(v1, v2)), optsMsgAndArgs...)
 	}
 
 	return true
@@ -111,14 +123,18 @@ func AssertNotEquivalent(t TestingT, v1, v2 interface{}, optsMsgAndArgs ...inter
 	opts, optsMsgAndArgs := splitOptions(optsMsgAndArgs)
 	match := maps.EquivalentMatch(v1, v2, opts...)
 
-	if !assert.NoError(t, match.V1NormalizeError, "error normalizing v1") || !assert.NoError(t, match.V2NormalizeError, "error normalizing v2") {
-		return false
-	}
-
 	if match.Matches {
+		nv1, err := maps.Normalize(v1)
+		if assert.NoError(t, err, "error normalizing v1") {
+			v1 = nv1
+		}
+		nv2, err := maps.Normalize(v2)
+		if assert.NoError(t, err, "error normalizing v2") {
+			v2 = nv2
+		}
 		return assert.Fail(t, fmt.Sprintf("v1 should not ≈ v2: \n"+
 			"v1: %+v\n"+
-			"v2: %+v", match.V1, match.V2), optsMsgAndArgs...)
+			"v2: %+v", v1, v2), optsMsgAndArgs...)
 	}
 
 	return true

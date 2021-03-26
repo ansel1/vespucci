@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/ansel1/merry"
 	"github.com/ansel1/vespucci/v4/proto"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/k0kubun/pp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -428,9 +429,19 @@ func TestContains(t *testing.T) {
 		},
 	}
 
+	spewConf := spew.NewDefaultConfig()
+	spewConf.SortKeys = true
+	spewConf.SpewKeys = true
+	spewConf.DisablePointerMethods = true
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			v1Str := spewConf.Sprintf("%#+v", test.v1)
+			v2Str := spewConf.Sprintf("%#+v", test.v2)
 			assert.Equal(t, test.expected, Contains(test.v1, test.v2, test.options...), pp.Sprintln("m1", test.v1, "m2", test.v2))
+			// make sure contains didn't modify the input values at all
+			assert.Equal(t, v1Str, spewConf.Sprintf("%#+v", test.v1))
+			assert.Equal(t, v2Str, spewConf.Sprintf("%#+v", test.v2))
 		})
 	}
 
@@ -576,18 +587,34 @@ func TestContainsMatch(t *testing.T) {
 	m := ContainsMatch(w1, w2)
 	assert.True(t, m.Matches)
 	assert.Empty(t, m.Message)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
+	assert.Nil(t, m.V1)
+	assert.Nil(t, m.V2)
+	assert.Nil(t, m.Error)
+	assert.Empty(t, m.Path)
 
 	w1.Color = "redblue"
 	m = ContainsMatch(w1, w2)
 	assert.False(t, m.Matches)
 	assert.NotEmpty(t, m.Message)
-	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
+	assert.Equal(t, "redblue", m.V1)
+	assert.Equal(t, "red", m.V2)
+	assert.Nil(t, m.Error)
+	assert.Equal(t, "color", m.Path)
 
 	m = ContainsMatch(w1, w2, StringContains())
 	assert.True(t, m.Matches)
+
+	// try something that will cause a marshaling error, like a channel value
+	m = ContainsMatch(w1, dict{"size": 1, "color": make(chan string)})
+	assert.Error(t, m.Error)
+	assert.Contains(t, m.Error.Error(), "json: unsupported type")
+	assert.False(t, m.Matches)
+	assert.NotEmpty(t, m.Message)
+	assert.Contains(t, m.Message, "err normalizing v2")
+	assert.Equal(t, "color", m.Path)
+	assert.Equal(t, "redblue", m.V1)
+	_, ok := m.V2.(chan string)
+	assert.True(t, ok, "should have been a channel, was %T", m.V2)
 }
 
 func TestEquivalent(t *testing.T) {
@@ -636,18 +663,26 @@ func TestEquivalentMatch(t *testing.T) {
 	m := EquivalentMatch(w1, w2)
 	assert.True(t, m.Matches)
 	assert.Empty(t, m.Message)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	w1.Color = "redblue"
 	m = EquivalentMatch(w1, w2)
 	assert.False(t, m.Matches)
 	assert.NotEmpty(t, m.Message)
-	assert.Equal(t, dict{"size": float64(1), "color": "redblue"}, m.V1)
-	assert.Equal(t, dict{"size": float64(1), "color": "red"}, m.V2)
 
 	m = EquivalentMatch(w1, w2, StringContains())
 	assert.True(t, m.Matches)
+
+	// try something that will cause a marshaling error, like a channel value
+	m = EquivalentMatch(w1, dict{"size": 1, "color": make(chan string)})
+	assert.Error(t, m.Error)
+	assert.Contains(t, m.Error.Error(), "json: unsupported type")
+	assert.False(t, m.Matches)
+	assert.NotEmpty(t, m.Message)
+	assert.Contains(t, m.Message, "err normalizing v2")
+	assert.Equal(t, "color", m.Path)
+	assert.Equal(t, "redblue", m.V1)
+	_, ok := m.V2.(chan string)
+	assert.True(t, ok, "should have been a channel, was %T", m.V2)
 }
 
 type dict = map[string]interface{}

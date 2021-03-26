@@ -17,7 +17,7 @@ func TestAssertContains_message(t *testing.T) {
 
 	require.False(t, b)
 	assert.Equal(t, `
-	Error Trace:	assertions.go:47
+	Error Trace:	assertions.go:51
 	            				assertion_messages_test.go:16
 	Error:      	v1 does not contain v2: 
 	            	values are not equal
@@ -42,7 +42,7 @@ func TestAssertNotContains_message(t *testing.T) {
 
 	require.False(t, b)
 	assert.Equal(t, `
-	Error Trace:	assertions.go:67
+	Error Trace:	assertions.go:75
 	            				assertion_messages_test.go:41
 	Error:      	v1 should not contain v2: 
 	            	v1: red
@@ -58,7 +58,7 @@ func TestAssertEquivalent_message(t *testing.T) {
 
 	require.False(t, b)
 	assert.Equal(t, `
-	Error Trace:	assertions.go:99
+	Error Trace:	assertions.go:111
 	            				assertion_messages_test.go:57
 	Error:      	v1 !≈ v2: 
 	            	values are not equal
@@ -83,7 +83,7 @@ func TestAssertNotEquivalent_message(t *testing.T) {
 
 	require.False(t, b)
 	assert.Equal(t, `
-	Error Trace:	assertions.go:119
+	Error Trace:	assertions.go:135
 	            				assertion_messages_test.go:82
 	Error:      	v1 should not ≈ v2: 
 	            	v1: red

@@ -311,14 +311,20 @@ func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
 	return ContainsMatch(v1, v2, options...).Matches
 }
 
-// Match is the result of ContainsMatch or EquivalentMatch
+// Match is the result of ContainsMatch or EquivalentMatch.  It reports whether
+// the match succeeded, and if not, where and why it failed.
+//
+// If the match succeed, Matches will be true and the rest of the fields will be empty.
+// Otherwise, V1, V2, and Path will be set to the values and location where the match failed.
+// Message will be set to an explanation of the failure.  And if the failure was due
+// to an error, Error will be set.
 type Match struct {
-	Matches          bool
-	V1               interface{}
-	V2               interface{}
-	V1NormalizeError error
-	V2NormalizeError error
-	Message          string
+	Matches bool
+	Path    string
+	V1      interface{}
+	V2      interface{}
+	Error   error
+	Message string
 }
 
 // ContainsMatch is the same as Contains, but returns the normalized versions of v1 and v2 used
@@ -329,16 +335,13 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 
-	nv1, err1 := normalize(v1, true, true, true)
-	nv2, err2 := normalize(v2, true, true, true)
-
 	return Match{
-		Matches:          contains(nv1, nv2, &ctx),
-		V1:               nv1,
-		V2:               nv2,
-		V1NormalizeError: err1,
-		V2NormalizeError: err2,
-		Message:          ctx.mismatchMsg,
+		Matches: contains(v1, v2, &ctx),
+		V1:      ctx.v1,
+		V2:      ctx.v2,
+		Error:   ctx.err,
+		Path:    ctx.eventPath,
+		Message: ctx.mismatchMsg,
 	}
 }
 
@@ -365,39 +368,45 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 
-	nv1, err1 := normalize(v1, true, true, true)
-	nv2, err2 := normalize(v2, true, true, true)
-
 	return Match{
-		Matches:          contains(nv1, nv2, &ctx) && containsInverted(nv1, nv2, &ctx),
-		V1:               nv1,
-		V2:               nv2,
-		V1NormalizeError: err1,
-		V2NormalizeError: err2,
-		Message:          ctx.mismatchMsg,
+		Matches: contains(v1, v2, &ctx) && containsInverted(v1, v2, &ctx),
+		V1:      ctx.v1,
+		V2:      ctx.v2,
+		Error:   ctx.err,
+		Path:    ctx.eventPath,
+		Message: ctx.mismatchMsg,
 	}
-
 }
 
 type containsCtx struct {
+	v1          interface{}
+	v2          interface{}
+	eventPath   string
 	path        []string
 	mismatchMsg string
 	invert      bool
+	err         error // stores last normalization error for v1 and v2
 	containsOptions
 }
 
 func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
-	path1 := strings.Join(append([]string{"v1"}, c.path...), "")
-	path2 := strings.Join(append([]string{"v2"}, c.path...), "")
+	c.eventPath = strings.Join(c.path, "")
+	path1 := "v1" + c.eventPath
+	path2 := "v2" + c.eventPath
+	c.eventPath = strings.TrimPrefix(c.eventPath, ".")
 
 	if c.invert {
 		msg = strings.ReplaceAll(msg, "v1", path2)
 		msg = strings.ReplaceAll(msg, "v2", path1)
+		c.v1 = v2
+		c.v2 = v1
 
 		c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v2, path2, v1)
 	} else {
 		msg = strings.ReplaceAll(msg, "v1", path1)
 		msg = strings.ReplaceAll(msg, "v2", path2)
+		c.v1 = v1
+		c.v2 = v2
 
 		c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v1, path2, v2)
 	}
@@ -419,6 +428,20 @@ func containsInverted(v1, v2 interface{}, opt *containsCtx) bool {
 }
 
 func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
+	var nv1, nv2 interface{}
+	nv1, ctx.err = normalize(v1, false, true, false)
+	if ctx.err != nil {
+		ctx.traceMsg("err normalizing v1: "+ctx.err.Error(), v1, v2)
+		return false
+	}
+	nv2, ctx.err = normalize(v2, false, true, false)
+	if ctx.err != nil {
+		ctx.traceMsg("err normalizing v2: "+ctx.err.Error(), v1, v2)
+		return false
+	}
+	v1 = nv1
+	v2 = nv2
+
 	if ctx.matchEmptyValues {
 		match := v1
 		against := v2
@@ -578,12 +601,7 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 // conflicts == !contains(v1, v2) && !excludes(v1, v2)
 // conflicts == !contains(merge(v1, v2), v1)
 func Conflicts(v1, v2 interface{}) bool {
-	v1, _ = normalize(v1, true, true, true)
-	v2, _ = normalize(v2, true, true, true)
-
-	// merge will modify v1 in place.  make a pristine copy of v1 to compare against the merge
-	v1orig, _ := normalize(v1, true, false, true)
-	return !contains(merge(v1, v2), v1orig, &containsCtx{})
+	return !Contains(Merge(v1, v2), v1)
 }
 
 // NormalizeOptions are options for the Normalize function.
