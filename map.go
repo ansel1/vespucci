@@ -511,15 +511,8 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 }
 
 func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
-	if ctx.matchEmptyValues {
-		if v2 == nil {
-			return true
-		}
-
-		type1 := reflect.TypeOf(v1)
-		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), v2) {
-			return true
-		}
+	if ctx.matchEmptyValues && v2 == nil {
+		return true
 	}
 
 	switch t1 := v1.(type) {
@@ -532,7 +525,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		}
 		return false
 	case string:
-		if v1 == v2 {
+		if v1 == v2 || (ctx.matchEmptyValues && v2 == "") {
 			return true
 		}
 
@@ -549,17 +542,23 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			return true
 		}
 		return false
-	case bool, nil, float64:
-		if v1 != v2 {
-			return false
-		}
-		return true
+	case bool:
+		return v1 == v2 || (ctx.matchEmptyValues && v2 == false)
+	case nil:
+		return v2 == nil
+	case float64:
+		return v1 == v2 || (ctx.matchEmptyValues && v2 == float64(0))
 	case map[string]interface{}:
 		t2, ok := v2.(map[string]interface{})
 		if !ok {
 			// v1 is a map, but v2 isn't; v1 can't contain v2
 			return false
 		}
+
+		if ctx.matchEmptyValues && len(t2) == 0 {
+			return true
+		}
+
 		extraKeys := ctx.strScratch()
 		for key, val2 := range t2 {
 			val1, present := t1[key]
@@ -610,6 +609,10 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 				// if equiv, both slices should be the same length
 				ctx.traceMsg(fmt.Sprintf(`v1 len %v is not the same as v2 len %v`, len(t1), len(t2)), v1, v2)
 				return false
+			}
+
+			if ctx.matchEmptyValues && len(t2) == 0 {
+				return true
 			}
 
 			// in equiv mode, keep track of which members of v1 were already matched
