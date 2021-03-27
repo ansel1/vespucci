@@ -41,9 +41,17 @@ func Keys(m map[string]interface{}) (keys []string) {
 //    [5, 6, 7] + [5, 5, 5, 4] = [5, 6, 7, 4]
 //
 // The return value is a copy.  v1 and v2 are not modified.
-func Merge(v1, v2 interface{}) interface{} {
-	v1, _ = normalize(v1, true, true, true)
-	v2, _ = normalize(v2, true, true, true)
+func Merge(v1, v2 interface{}, opts ...NormalizeOption) interface{} {
+	o := NormalizeOptions{
+		Copy:    true,
+		Marshal: true,
+		Deep:    true,
+	}
+	for _, opt := range opts {
+		opt.Apply(&o)
+	}
+	v1, _ = normalize(v1, &o)
+	v2, _ = normalize(v2, &o)
 	return merge(v1, v2)
 }
 
@@ -99,8 +107,17 @@ func sliceContains(s []interface{}, v interface{}) bool {
 // If the transform function returns a non-primitive value, it will recurse into the new value.
 //
 // If the transformer function returns the error ErrStop, the process will abort with no error.
-func Transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
-	v, err := transform(v, transformer)
+func Transform(v interface{}, transformer func(in interface{}) (interface{}, error), opts ...NormalizeOption) (interface{}, error) {
+	o := NormalizeOptions{
+		Copy:    true,
+		Marshal: true,
+	}
+	for _, opt := range opts {
+		opt.Apply(&o)
+	}
+	o.Deep = false
+
+	v, err := transform(v, transformer, &o)
 	if err == ErrStop {
 		return v, nil
 	}
@@ -111,26 +128,26 @@ func Transform(v interface{}, transformer func(in interface{}) (interface{}, err
 // not return an error.
 var ErrStop = errors.New("stop")
 
-func transform(v interface{}, transformer func(in interface{}) (interface{}, error)) (interface{}, error) {
-	v, _ = normalize(v, true, true, false)
+func transform(v interface{}, transformer func(in interface{}) (interface{}, error), opts *NormalizeOptions) (interface{}, error) {
+	v, _ = normalize(v, opts)
 	var err error
 	v, err = transformer(v)
 	if err != nil {
 		return v, err
 	}
 	// normalize again, in case the transformer function altered v
-	v, _ = normalize(v, false, true, false)
+	v, _ = normalize(v, opts)
 	switch t := v.(type) {
 	case map[string]interface{}:
 		for key, value := range t {
-			t[key], err = transform(value, transformer)
+			t[key], err = transform(value, transformer, opts)
 			if err != nil {
 				break
 			}
 		}
 	case []interface{}:
 		for i, value := range t {
-			t[i], err = transform(value, transformer)
+			t[i], err = transform(value, transformer, opts)
 			if err != nil {
 				break
 			}
@@ -334,6 +351,10 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 	for _, o := range options {
 		o(&ctx.containsOptions)
 	}
+	ctx.Copy = true
+	ctx.PreserveTime = true
+	ctx.Marshal = true
+	ctx.ParseTime = ctx.parseTimes
 
 	return Match{
 		Matches: contains(v1, v2, &ctx),
@@ -368,6 +389,11 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 
+	ctx.Copy = true
+	ctx.PreserveTime = true
+	ctx.Marshal = true
+	ctx.ParseTime = ctx.parseTimes
+
 	return Match{
 		Matches: contains(v1, v2, &ctx) && containsInverted(v1, v2, &ctx),
 		V1:      ctx.v1,
@@ -387,6 +413,7 @@ type containsCtx struct {
 	invert      bool
 	err         error // stores last normalization error for v1 and v2
 	containsOptions
+	NormalizeOptions
 }
 
 func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
@@ -427,21 +454,64 @@ func containsInverted(v1, v2 interface{}, opt *containsCtx) bool {
 	return b
 }
 
+func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
+	if ctx.matchEmptyValues {
+		if ctx.invert && tm1.IsZero() {
+			return true
+		} else if tm2.IsZero() {
+			return true
+		}
+	}
+	if ctx.truncateTimes > 0 {
+		tm1 = tm1.Truncate(ctx.truncateTimes)
+		tm2 = tm2.Truncate(ctx.truncateTimes)
+	}
+	if ctx.roundTimes > 0 {
+		tm1 = tm1.Round(ctx.roundTimes)
+		tm2 = tm2.Round(ctx.roundTimes)
+	}
+	delta := tm1.Sub(tm2)
+	if delta < 0 {
+		delta *= -1
+	}
+	if delta > ctx.timeDelta {
+		if ctx.timeDelta > 0 {
+			ctx.traceMsg(fmt.Sprintf(`delta of %v exceeds %v`, delta, ctx.timeDelta), tm1.String(), tm2.String())
+		} else {
+			ctx.traceNotEqual(tm1.String(), tm2.String())
+		}
+		return false
+	}
+	if ctx.ignoreTimeZone {
+		return true
+	}
+	if tm1.Location() != tm2.Location() {
+		ctx.traceMsg(`time zone offsets don't match`, tm1.String(), tm2.String())
+		return false
+	}
+	return true
+}
+
 func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	var nv1, nv2 interface{}
-	nv1, ctx.err = normalize(v1, false, true, false)
+	nv1, ctx.err = normalize(v1, &ctx.NormalizeOptions)
 	if ctx.err != nil {
 		ctx.traceMsg("err normalizing v1: "+ctx.err.Error(), v1, v2)
 		return false
 	}
-	nv2, ctx.err = normalize(v2, false, true, false)
+	nv2, ctx.err = normalize(v2, &ctx.NormalizeOptions)
 	if ctx.err != nil {
 		ctx.traceMsg("err normalizing v2: "+ctx.err.Error(), v1, v2)
 		return false
 	}
-	v1 = nv1
-	v2 = nv2
+	match := containsNormalized(nv1, nv2, ctx)
+	if !match && ctx.mismatchMsg == "" && ctx.err == nil {
+		ctx.traceNotEqual(v1, v2)
+	}
+	return match
+}
 
+func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	if ctx.matchEmptyValues {
 		match := v1
 		against := v2
@@ -460,6 +530,14 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	}
 
 	switch t1 := v1.(type) {
+	case time.Time:
+		if v1 == v2 {
+			return true
+		}
+		if t2, ok := v2.(time.Time); ok {
+			return compareTimes(t1, t2, ctx)
+		}
+		return false
 	case string:
 		if v1 == v2 {
 			return true
@@ -467,53 +545,9 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 
 		s2, ok := v2.(string)
 		if !ok {
-			ctx.traceNotEqual(v1, v2)
 			return false
 		}
 
-		if ctx.parseTimes {
-			tm1, err := time.Parse(time.RFC3339Nano, t1)
-			if err == nil {
-				tm2, err := time.Parse(time.RFC3339Nano, s2)
-				if err == nil {
-					if ctx.matchEmptyValues {
-						if ctx.invert && tm1.IsZero() {
-							return true
-						} else if tm2.IsZero() {
-							return true
-						}
-					}
-					if ctx.truncateTimes > 0 {
-						tm1 = tm1.Truncate(ctx.truncateTimes)
-						tm2 = tm2.Truncate(ctx.truncateTimes)
-					}
-					if ctx.roundTimes > 0 {
-						tm1 = tm1.Round(ctx.roundTimes)
-						tm2 = tm2.Round(ctx.roundTimes)
-					}
-					delta := tm1.Sub(tm2)
-					if delta < 0 {
-						delta *= -1
-					}
-					if delta > ctx.timeDelta {
-						if ctx.timeDelta > 0 {
-							ctx.traceMsg(fmt.Sprintf(`delta of %v exceeds %v`, delta, ctx.timeDelta), v1, v2)
-						} else {
-							ctx.traceNotEqual(v1, v2)
-						}
-						return false
-					}
-					if ctx.ignoreTimeZone {
-						return true
-					}
-					if tm1.Location() != tm2.Location() {
-						ctx.traceMsg(`time zone offsets don't match`, v1, v2)
-						return false
-					}
-					return true
-				}
-			}
-		}
 		if ctx.stringContains {
 			match := t1
 			against := s2
@@ -527,11 +561,9 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			}
 			return true
 		}
-		ctx.traceNotEqual(v1, v2)
 		return false
 	case bool, nil, float64:
 		if v1 != v2 {
-			ctx.traceNotEqual(v1, v2)
 			return false
 		}
 		return true
@@ -539,7 +571,6 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		t2, ok := v2.(map[string]interface{})
 		if !ok {
 			// v1 is a map, but v2 isn't; v1 can't contain v2
-			ctx.traceNotEqual(v1, v2)
 			return false
 		}
 		var extraKeys []string
@@ -587,11 +618,7 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		}
 	default:
 		// since we deeply normalized both values, we should not hit this.
-		equal := reflect.DeepEqual(v1, v2)
-		if !equal {
-			ctx.traceMsg("values are not equal", v1, v2)
-		}
-		return equal
+		return reflect.DeepEqual(v1, v2)
 	}
 }
 
@@ -616,16 +643,96 @@ type NormalizeOptions struct {
 
 	// Perform the operation recursively.  If false, only v is normalized, but nested values are not
 	Deep bool
+
+	// Treat time.Time values as an additional normalized type.  If false, time values are converted
+	// to json's standard string formatted time.  If true, time values are preserved as time.Time.
+	PreserveTime bool
+
+	// If true, strings are parsed as JSON formatted time values.  If the parse is successful, the value
+	// is converted to a time.Time value.  PreserveTime must also be true, or this has no effect.
+	ParseTime bool
+}
+
+// NormalizeOption is an option function for the Normalize operation.
+type NormalizeOption interface {
+	Apply(*NormalizeOptions)
+}
+
+// NormalizeOptionFunc is a function which implements NormalizeOption.
+type NormalizeOptionFunc func(*NormalizeOptions)
+
+// Apply implements NormalizeOption.
+func (f NormalizeOptionFunc) Apply(options *NormalizeOptions) {
+	f(options)
+}
+
+// Copy causes Normalize to return a copy of the original value.
+func Copy(b bool) NormalizeOption {
+	return NormalizeOptionFunc(func(options *NormalizeOptions) {
+		options.Copy = b
+	})
+}
+
+// Marshal allows normalization to resort to JSON marshaling if the value can't
+// be directly coerced into one of the standard types.
+func Marshal(b bool) NormalizeOption {
+	return NormalizeOptionFunc(func(options *NormalizeOptions) {
+		options.Marshal = b
+	})
+}
+
+// Deep causes normalization to recurse.
+func Deep(b bool) NormalizeOption {
+	return NormalizeOptionFunc(func(options *NormalizeOptions) {
+		options.Deep = b
+	})
+}
+
+// PreserveTime cause normalization to preserve time.Time values instead of
+// converting them to strings.
+func PreserveTime(b bool) NormalizeOption {
+	return NormalizeOptionFunc(func(options *NormalizeOptions) {
+		options.PreserveTime = b
+	})
+}
+
+// ParseTime causes normalization to attempt to coerce strings into
+// time.Time.  If parsing fails, the string is left as is.  This
+// setting has no effect if PreserveTime is not also set.
+func ParseTime(b bool) NormalizeOption {
+	return NormalizeOptionFunc(func(options *NormalizeOptions) {
+		options.ParseTime = b
+	})
 }
 
 // NormalizeWithOptions does the same as Normalize, but with options.
 func NormalizeWithOptions(v interface{}, opt NormalizeOptions) (interface{}, error) {
-	return normalize(v, opt.Copy, opt.Marshal, opt.Deep)
+	return normalize(v, &opt)
 }
 
-func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err error) {
+func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err error) {
 	v2 = v
 	copied := false
+	if options.PreserveTime {
+		switch t := v.(type) {
+		case time.Time:
+			return
+		case *time.Time:
+			if t == nil {
+				return
+			}
+			v2 = *t
+			return
+		case string:
+			if options.ParseTime {
+				tm, err := time.Parse(time.RFC3339Nano, t)
+				if err == nil {
+					v2 = tm
+					return v2, nil
+				}
+			}
+		}
+	}
 	switch t := v.(type) {
 	case bool, string, nil, float64:
 		return
@@ -652,12 +759,12 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 	case uint64:
 		return float64(t), nil
 	case map[string]interface{}, []interface{}:
-		if !copies && !deep {
+		if !options.Copy && !options.Deep {
 			return
 		}
 	default:
 		// if v explicitly supports json marshalling, just skip to that.
-		if marshal {
+		if options.Marshal {
 			switch m := v.(type) {
 			case json.Marshaler:
 				return slowNormalize(m)
@@ -688,7 +795,7 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 				s[i] = rv.Index(i).Interface()
 			}
 			v2 = s
-		case marshal:
+		case options.Marshal:
 			// marshal/unmarshal
 			return slowNormalize(v)
 		default:
@@ -696,11 +803,11 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			return
 		}
 	}
-	if deep || (copies && !copied) {
+	if options.Deep || (options.Copy && !copied) {
 		switch t := v2.(type) {
 		case map[string]interface{}:
 			var m map[string]interface{}
-			if copies && !copied {
+			if options.Copy && !copied {
 				m = make(map[string]interface{}, len(t))
 			} else {
 				// modify in place
@@ -708,8 +815,8 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			}
 			v2 = m
 			for key, value := range t {
-				if deep {
-					if value, err = normalize(value, copies, marshal, deep); err != nil {
+				if options.Deep {
+					if value, err = normalize(value, options); err != nil {
 						return
 					}
 				}
@@ -717,7 +824,7 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			}
 		case []interface{}:
 			var s []interface{}
-			if copies && !copied {
+			if options.Copy && !copied {
 				s = make([]interface{}, len(t))
 			} else {
 				// modify in place
@@ -725,8 +832,8 @@ func normalize(v interface{}, copies, marshal, deep bool) (v2 interface{}, err e
 			}
 			v2 = s
 			for i := 0; i < len(t); i++ {
-				if deep {
-					if s[i], err = normalize(t[i], copies, marshal, deep); err != nil {
+				if options.Deep {
+					if s[i], err = normalize(t[i], options); err != nil {
 						return
 					}
 				} else {
@@ -770,8 +877,16 @@ func slowNormalize(v interface{}) (interface{}, error) {
 // 5. All other values will be converted into the above types by doing a json.Marshal and Unmarshal
 //
 // Values in v1 will be modified in place if possible
-func Normalize(v1 interface{}) (interface{}, error) {
-	return normalize(v1, true, true, true)
+func Normalize(v1 interface{}, opts ...NormalizeOption) (interface{}, error) {
+	opt := NormalizeOptions{
+		Copy:    true,
+		Marshal: true,
+		Deep:    true,
+	}
+	for _, option := range opts {
+		option.Apply(&opt)
+	}
+	return normalize(v1, &opt)
 }
 
 // PathNotFoundError indicates the requested path was not present in the value.
@@ -872,7 +987,17 @@ func (p Path) String() string {
 //
 // Returns PathNotSliceError if evaluating a slice index against a value which
 // isn't a slice.
-func Get(v interface{}, path string) (interface{}, error) {
+func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, error) {
+	opt := NormalizeOptions{
+		Marshal:      true,
+		PreserveTime: true,
+	}
+	for _, option := range opts {
+		option.Apply(&opt)
+	}
+	opt.Deep = false
+	opt.Copy = false
+
 	parsedPath, err := ParsePath(path)
 	if err != nil {
 		return nil, merry.Prepend(err, "Couldn't parse the path")
@@ -881,7 +1006,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 	for i, part := range parsedPath {
 		switch t := part.(type) {
 		case string:
-			out, err = normalize(out, true, true, false)
+			out, err = normalize(out, &opt)
 			if err != nil {
 				return nil, err
 			}
@@ -898,7 +1023,7 @@ func Get(v interface{}, path string) (interface{}, error) {
 			}
 		case int:
 			// slice index
-			out, err = normalize(out, true, true, false)
+			out, err = normalize(out, &opt)
 			if err != nil {
 				return nil, err
 			}

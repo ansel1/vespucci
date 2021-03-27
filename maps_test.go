@@ -341,13 +341,6 @@ func TestContains(t *testing.T) {
 			v1:       t1,
 			v2:       time.Time{},
 			options:  []ContainsOption{EmptyValuesMatchAny()},
-			expected: false,
-		},
-		{
-			name:     "parseTimes",
-			v1:       t1,
-			v2:       time.Time{},
-			options:  []ContainsOption{EmptyValuesMatchAny(), ParseTimes()},
 			expected: true,
 		},
 		{
@@ -535,20 +528,20 @@ v2.colors.color -> "blue"`},
 			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{ParseTimes()},
 				expectedTrace: `
 values are not equal
-v1.time -> "1987-02-10T06:30:15-05:00"
-v2.time -> "1987-02-10T06:31:15-05:00"`,
+v1.time -> "1987-02-10 06:30:15 -0500 EST"
+v2.time -> "1987-02-10 06:31:15 -0500 EST"`,
 			},
 			{v1: dict{"time": now}, v2: dict{"time": now.Add(time.Minute)}, opts: []ContainsOption{AllowTimeDelta(time.Second * 30)},
 				expectedTrace: `
 delta of 1m0s exceeds 30s
-v1.time -> "1987-02-10T06:30:15-05:00"
-v2.time -> "1987-02-10T06:31:15-05:00"`,
+v1.time -> "1987-02-10 06:30:15 -0500 EST"
+v2.time -> "1987-02-10 06:31:15 -0500 EST"`,
 			},
 			{v1: dict{"time": now}, v2: dict{"time": nowCST}, opts: []ContainsOption{ParseTimes()},
 				expectedTrace: `
 time zone offsets don't match
-v1.time -> "1987-02-10T06:30:15-05:00"
-v2.time -> "1987-02-10T05:30:15-06:00"`,
+v1.time -> "1987-02-10 06:30:15 -0500 EST"
+v2.time -> "1987-02-10 05:30:15 -0600 CST"`,
 			},
 		}
 		for _, test := range tests {
@@ -990,7 +983,12 @@ func BenchmarkEmpty(b *testing.B) {
 
 func TestInternalNormalize(t *testing.T) {
 	tm := time.Now()
-	v, err := normalize(tm, false, false, true)
+	opts := NormalizeOptions{
+		Copy:    false,
+		Marshal: false,
+		Deep:    true,
+	}
+	v, err := normalize(tm, &opts)
 	assert.NoError(t, err)
 	assert.Equal(t, v, tm)
 }
