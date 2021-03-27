@@ -10,7 +10,9 @@ import (
 	"github.com/k0kubun/pp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"math/rand"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -641,6 +643,24 @@ v2 -> map[string]interface {}{"color":"big", "size":1}`, trace)
 	v2.Color = ""
 	assert.False(t, Equivalent(v1, v2))
 	assert.True(t, Equivalent(v1, v2, EmptyValuesMatchAny()))
+
+	// slice values must be slices on both sides
+	assert.True(t, Contains([]interface{}{"blue", "red", "green"}, "red"))
+	assert.False(t, Equivalent([]interface{}{"blue", "red", "green"}, "red"))
+
+	// slice values must contain the same values, but order doesn't matter
+	assert.False(t, Equivalent([]interface{}{"blue", "red", "green"}, []interface{}{"red", "green", "orange"}))
+	assert.False(t, Equivalent([]interface{}{"blue", "red", "green"}, []interface{}{"red", "green", "blue", "orange"}))
+
+	// StringContains should still work
+	assert.True(t, Equivalent([]interface{}{"bluegreen", "red", "green"}, []interface{}{"red", "green", "blue"}, StringContains()))
+	assert.False(t, Equivalent([]interface{}{"blue", "red", "green"}, []interface{}{"red", "green", "bluegreen"}, StringContains()))
+
+	// nils with EmptyValuesMatchAny work like wildcards
+	assert.True(t, Equivalent([]interface{}{"blue", "red", "green", "black"}, []interface{}{"red", "red", "green", ""}, EmptyMapValuesMatchAny()))
+
+	assert.True(t, Equivalent([]interface{}{"blue", "red", "green", "green"}, []interface{}{"red", "red", "green", "blue"}))
+	assert.False(t, Equivalent([]interface{}{"blue", "red", "green", "black"}, []interface{}{"red", "red", "green", "blue"}))
 }
 
 func TestEquivalentMatch(t *testing.T) {
@@ -1118,4 +1138,59 @@ func BenchmarkAvoidMarshal(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Normalize(s)
 	}
+}
+
+func BenchmarkEquivalentSlices(b *testing.B) {
+	// the toughest slice match is a large slice with lots of duplicates
+	v1 := make([]string, 300)
+	for i := 0; i < 100; i++ {
+		v1[i] = strconv.Itoa(i)
+	}
+	copy(v1[100:], v1[0:100])
+	copy(v1[200:], v1[100:200])
+
+	rand.Shuffle(300, func(i, j int) {
+		v1[i], v1[j] = v1[j], v1[i]
+	})
+
+	v2 := make([]string, 300)
+	copy(v2, v1)
+	rand.Shuffle(300, func(i, j int) {
+		v2[i], v2[j] = v2[j], v2[i]
+	})
+
+	b.Run("large slices", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			m := EquivalentMatch(v1, v2)
+			if !m.Matches {
+				b.Fatal("the slices weren't equivalent: ", m.Message)
+			}
+		}
+	})
+
+	v1 = make([]string, 60)
+	v2 = make([]string, 60)
+	for i := 0; i < 30; i++ {
+		v1[i] = strconv.Itoa(i)
+	}
+	copy(v1[30:], v1[0:30])
+	copy(v2, v1)
+
+	rand.Shuffle(60, func(i, j int) {
+		v1[i], v1[j] = v1[j], v1[i]
+	})
+	rand.Shuffle(60, func(i, j int) {
+		v2[i], v2[j] = v2[j], v2[i]
+	})
+
+	b.Run("short slices", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			m := EquivalentMatch(v1, v2)
+			if !m.Matches {
+				b.Fatal("the slices weren't equivalent: ", m.Message)
+			}
+		}
+	})
 }

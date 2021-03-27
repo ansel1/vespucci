@@ -393,9 +393,10 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 	ctx.PreserveTime = true
 	ctx.Marshal = true
 	ctx.ParseTime = ctx.parseTimes
+	ctx.equiv = true
 
 	return Match{
-		Matches: contains(v1, v2, &ctx) && containsInverted(v1, v2, &ctx),
+		Matches: contains(v1, v2, &ctx),
 		V1:      ctx.v1,
 		V2:      ctx.v2,
 		Error:   ctx.err,
@@ -410,10 +411,19 @@ type containsCtx struct {
 	eventPath   string
 	path        []string
 	mismatchMsg string
-	invert      bool
 	err         error // stores last normalization error for v1 and v2
+	equiv       bool  // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
+
+	strBuf []string // re-usable scratch space
 	containsOptions
 	NormalizeOptions
+}
+
+func (c *containsCtx) strScratch() []string {
+	if c.strBuf == nil {
+		c.strBuf = make([]string, 0, 20)
+	}
+	return c.strBuf[len(c.strBuf):]
 }
 
 func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
@@ -422,21 +432,12 @@ func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
 	path2 := "v2" + c.eventPath
 	c.eventPath = strings.TrimPrefix(c.eventPath, ".")
 
-	if c.invert {
-		msg = strings.ReplaceAll(msg, "v1", path2)
-		msg = strings.ReplaceAll(msg, "v2", path1)
-		c.v1 = v2
-		c.v2 = v1
+	msg = strings.ReplaceAll(msg, "v1", path1)
+	msg = strings.ReplaceAll(msg, "v2", path2)
+	c.v1 = v1
+	c.v2 = v2
 
-		c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v2, path2, v1)
-	} else {
-		msg = strings.ReplaceAll(msg, "v1", path1)
-		msg = strings.ReplaceAll(msg, "v2", path2)
-		c.v1 = v1
-		c.v2 = v2
-
-		c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v1, path2, v2)
-	}
+	c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v1, path2, v2)
 
 	if c.trace != nil {
 		*c.trace = c.mismatchMsg
@@ -447,18 +448,9 @@ func (c *containsCtx) traceNotEqual(v1, v2 interface{}) {
 	c.traceMsg("values are not equal", v1, v2)
 }
 
-func containsInverted(v1, v2 interface{}, opt *containsCtx) bool {
-	opt.invert = true
-	b := contains(v2, v1, opt)
-	opt.invert = false
-	return b
-}
-
 func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 	if ctx.matchEmptyValues {
-		if ctx.invert && tm1.IsZero() {
-			return true
-		} else if tm2.IsZero() {
+		if tm2.IsZero() {
 			return true
 		}
 	}
@@ -492,6 +484,13 @@ func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 	return true
 }
 
+func dive(path string, v1, v2 interface{}, ctx *containsCtx) bool {
+	ctx.path = append(ctx.path, path)
+	b1 := contains(v1, v2, ctx)
+	ctx.path = ctx.path[:len(ctx.path)-1]
+	return b1
+}
+
 func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	var nv1, nv2 interface{}
 	nv1, ctx.err = normalize(v1, &ctx.NormalizeOptions)
@@ -513,18 +512,12 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 
 func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	if ctx.matchEmptyValues {
-		match := v1
-		against := v2
-		if ctx.invert {
-			match = v2
-			against = v1
-		}
-		if against == nil {
+		if v2 == nil {
 			return true
 		}
 
-		type1 := reflect.TypeOf(match)
-		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), against) {
+		type1 := reflect.TypeOf(v1)
+		if type1 != nil && reflect.DeepEqual(reflect.Zero(type1).Interface(), v2) {
 			return true
 		}
 	}
@@ -549,13 +542,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		}
 
 		if ctx.stringContains {
-			match := t1
-			against := s2
-			if ctx.invert {
-				match = s2
-				against = t1
-			}
-			if !strings.Contains(match, against) {
+			if !strings.Contains(t1, s2) {
 				ctx.traceMsg(`v1 does not contain v2`, v1, v2)
 				return false
 			}
@@ -573,16 +560,13 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			// v1 is a map, but v2 isn't; v1 can't contain v2
 			return false
 		}
-		var extraKeys []string
+		extraKeys := ctx.strScratch()
 		for key, val2 := range t2 {
 			val1, present := t1[key]
 			if !present {
 				extraKeys = append(extraKeys, key)
 			} else {
-				ctx.path = append(ctx.path, "."+key)
-				b2 := contains(val1, val2, ctx)
-				ctx.path = ctx.path[:len(ctx.path)-1]
-				if !b2 {
+				if !dive("."+key, val1, val2, ctx) {
 					return false
 				}
 			}
@@ -592,32 +576,95 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			ctx.traceMsg(fmt.Sprintf(`v2 contains extra keys: %v`, extraKeys), v1, v2)
 			return false
 		}
+		if ctx.equiv && len(t1) > len(t2) {
+			// v1 has extra keys.  collect them and register the mismatch
+			for key := range t1 {
+				_, present := t2[key]
+				if !present {
+					extraKeys = append(extraKeys, key)
+				}
+			}
+			if len(extraKeys) > 0 {
+				sort.Strings(extraKeys)
+				ctx.traceMsg(fmt.Sprintf(`v1 contains extra keys: %v`, extraKeys), v1, v2)
+				return false
+			}
+		}
 		return true
 	case []interface{}:
 		switch t2 := v2.(type) {
 		default:
+			if ctx.equiv {
+				// to be equivalent, both sides need to be a slice
+				return false
+			}
 			for _, el1 := range t1 {
 				if contains(el1, v2, ctx) {
 					return true
 				}
 			}
-			ctx.traceMsg(fmt.Sprintf(`v1 does not contain v2`), v1, v2)
+			ctx.traceMsg(`v1 does not contain v2`, v1, v2)
 			return false
 		case []interface{}:
-		Search:
+			if ctx.equiv && len(t1) != len(t2) {
+				// if equiv, both slices should be the same length
+				ctx.traceMsg(fmt.Sprintf(`v1 len %v is not the same as v2 len %v`, len(t1), len(t2)), v1, v2)
+				return false
+			}
+
+			// in equiv mode, keep track of which members of v1 were already matched
+			// to v2 values.  We can skip those when we scan v1.
+			var bits uint64
+			var bitmap map[int]bool
+			if len(t1) > 64 && ctx.equiv {
+				bitmap = make(map[int]bool)
+			}
+		Searchv2:
 			for i, val2 := range t2 {
-				for _, value := range t1 {
+				for i1, value := range t1 {
 					if contains(value, val2, ctx) {
-						continue Search
+						if ctx.equiv {
+							if bitmap != nil {
+								bitmap[i1] = true
+							} else {
+								bits |= 1 << i1
+							}
+						}
+						continue Searchv2
 					}
 				}
 				ctx.traceMsg(fmt.Sprintf(`v1 does not contain v2[%v]: "%+v"`, i, val2), v1, v2)
 				return false
 			}
+
+			if ctx.equiv {
+			Searchv1:
+				for i, val1 := range t1 {
+					// check whether we already matched val1 one when we scanned t2
+					if bitmap != nil {
+						if bitmap[i] {
+							continue Searchv1
+						}
+					} else {
+						mask := uint64(1) << i
+						if mask&bits == mask {
+							continue Searchv1
+						}
+					}
+
+					for _, val2 := range t2 {
+						if contains(val1, val2, ctx) {
+							continue Searchv1
+						}
+					}
+					ctx.traceMsg(fmt.Sprintf(`v2 does not contain v1[%v]:"%+v"`, i, val1), v1, v2)
+					return false
+				}
+			}
 			return true
 		}
 	default:
-		// since we deeply normalized both values, we should not hit this.
+		// since we normalized both values, we should not hit this.
 		return reflect.DeepEqual(v1, v2)
 	}
 }
