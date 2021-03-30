@@ -34,6 +34,7 @@ func TestAssertionsContains(t *testing.T) {
 		v1, v2   interface{}
 		contains bool
 		equiv    bool
+		err      bool
 		opts     []interface{}
 	}{
 		{
@@ -74,6 +75,11 @@ func TestAssertionsContains(t *testing.T) {
 			contains: true,
 			equiv:    false,
 		},
+		{
+			v1:  "string",
+			v2:  make(chan bool),
+			err: true,
+		},
 	}
 
 	for _, test := range tests {
@@ -87,6 +93,7 @@ func TestAssertionsContains(t *testing.T) {
 			af := func(fn assertFunc, expectSuccess bool) {
 				mt := mockTestingT{}
 				b := fn(&mt, test.v1, test.v2, test.opts...)
+				t.Logf("msg: " + mt.msg)
 				assert.Equal(t, expectSuccess, b)
 				if expectSuccess {
 					assert.False(t, mt.failed)
@@ -100,6 +107,7 @@ func TestAssertionsContains(t *testing.T) {
 			rf := func(fn requireFunc, expectSuccess bool) {
 				mt := mockTestingT{}
 				fn(&mt, test.v1, test.v2, test.opts...)
+				t.Logf("msg: " + mt.msg)
 				if expectSuccess {
 					assert.False(t, mt.failed)
 					assert.False(t, mt.failedNow)
@@ -109,15 +117,15 @@ func TestAssertionsContains(t *testing.T) {
 				}
 			}
 
-			af(AssertContains, test.contains)
-			af(AssertNotContains, !test.contains)
-			rf(RequireContains, test.contains)
-			rf(RequireNotContains, !test.contains)
+			af(AssertContains, test.contains && !test.err)
+			af(AssertNotContains, !test.contains && !test.err)
+			rf(RequireContains, test.contains && !test.err)
+			rf(RequireNotContains, !test.contains && !test.err)
 
-			af(AssertEquivalent, test.equiv)
-			af(AssertNotEquivalent, !test.equiv)
-			rf(RequireEquivalent, test.equiv)
-			rf(RequireNotEquivalent, !test.equiv)
+			af(AssertEquivalent, test.equiv && !test.err)
+			af(AssertNotEquivalent, !test.equiv && !test.err)
+			rf(RequireEquivalent, test.equiv && !test.err)
+			rf(RequireNotEquivalent, !test.equiv && !test.err)
 
 		})
 	}
