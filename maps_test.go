@@ -343,6 +343,13 @@ func TestContains(t *testing.T) {
 			v1:       t1,
 			v2:       time.Time{},
 			options:  []ContainsOption{EmptyValuesMatchAny()},
+			expected: false,
+		},
+		{
+			name:     "parsetimes",
+			v1:       t1,
+			v2:       time.Time{},
+			options:  []ContainsOption{EmptyValuesMatchAny(), ParseTimes()},
 			expected: true,
 		},
 		{
@@ -784,7 +791,7 @@ func BenchmarkBigMerge(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		s2 = append(s2, bigNestedMaps(fmt.Sprintf("water%v", i), 3))
 	}
-	//pp.Println("m1", m1)
+	// pp.Println("m1", m1)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Merge(m1, m2)
@@ -827,6 +834,15 @@ type Widget struct {
 	Color string `json:"color"`
 }
 
+// specialTime marshals to a time string.
+type specialTime struct {
+	t time.Time
+}
+
+func (s *specialTime) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.t)
+}
+
 func TestNormalize(t *testing.T) {
 	t1 := time.Date(1990, 11, 23, 2, 2, 2, 2, time.FixedZone("testzone", -3*60*60))
 
@@ -846,7 +862,7 @@ func TestNormalize(t *testing.T) {
 	tests := []struct {
 		name    string
 		in, out interface{}
-		opts    *NormalizeOptions
+		opts    []NormalizeOption
 	}{
 		// basic no-op types of cases
 		{in: 5, out: float64(5)},
@@ -859,27 +875,25 @@ func TestNormalize(t *testing.T) {
 		{in: []interface{}{"red", 4}, out: []interface{}{"red", float64(4)}},
 		{in: []string{"red", "green"}, out: []interface{}{"red", "green"}},
 		// hits the marshaling path
-		{in: &Widget{5, "red"}, out: dict{"size": float64(5), "color": "red"}},
+		{in: &Widget{Size: 5, Color: "red"}, out: dict{"size": float64(5), "color": "red"}},
 		// marshaling might occur deep
-		{in: dict{"widget": &Widget{5, "red"}}, out: dict{"widget": dict{"size": float64(5), "color": "red"}}},
+		{in: dict{"widget": &Widget{Size: 5, Color: "red"}}, out: dict{"widget": dict{"size": float64(5), "color": "red"}}},
 		{
 			name: "marshaller",
 			in:   json.RawMessage(`{"color":"blue"}`),
 			out:  dict{"color": "blue"},
-			opts: &NormalizeOptions{Marshal: true},
+			opts: []NormalizeOption{Marshal(true)},
 		},
 		{in: t1, out: "1990-11-23T02:02:02.000000002-03:00"},
 		{in: t1.UTC(), out: "1990-11-23T05:02:02.000000002Z"},
+		{in: t1, out: t1, opts: []NormalizeOption{NormalizeTime(true)}},
+		{in: &specialTime{t: t1.UTC()}, out: t1.UTC(), opts: []NormalizeOption{NormalizeTime(true)}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			var out interface{}
 			var err error
-			if test.opts != nil {
-				out, err = NormalizeWithOptions(test.in, *test.opts)
-			} else {
-				out, err = Normalize(test.in)
-			}
+			out, err = Normalize(test.in, test.opts...)
 
 			require.NoError(t, err)
 			require.Equal(t, test.out, out, "in: %v", pp.Sprint(test.in))

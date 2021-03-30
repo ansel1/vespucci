@@ -352,9 +352,8 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 		o(&ctx.containsOptions)
 	}
 	ctx.Copy = true
-	ctx.PreserveTime = true
 	ctx.Marshal = true
-	ctx.ParseTime = ctx.parseTimes
+	ctx.NormalizeTime = ctx.parseTimes
 
 	return Match{
 		Matches: contains(v1, v2, &ctx),
@@ -390,9 +389,8 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 	}
 
 	ctx.Copy = true
-	ctx.PreserveTime = true
 	ctx.Marshal = true
-	ctx.ParseTime = ctx.parseTimes
+	ctx.NormalizeTime = ctx.parseTimes
 	ctx.equiv = true
 
 	return Match{
@@ -695,12 +693,9 @@ type NormalizeOptions struct {
 	Deep bool
 
 	// Treat time.Time values as an additional normalized type.  If false, time values are converted
-	// to json's standard string formatted time.  If true, time values are preserved as time.Time.
-	PreserveTime bool
-
-	// If true, strings are parsed as JSON formatted time values.  If the parse is successful, the value
-	// is converted to a time.Time value.  PreserveTime must also be true, or this has no effect.
-	ParseTime bool
+	// to json's standard string formatted time.  If true, time values are preserved as time.Time, and
+	// string values are coerced to time if they are in the JSON RFC3339 format.
+	NormalizeTime bool
 }
 
 // NormalizeOption is an option function for the Normalize operation.
@@ -738,20 +733,11 @@ func Deep(b bool) NormalizeOption {
 	})
 }
 
-// PreserveTime cause normalization to preserve time.Time values instead of
+// NormalizeTime cause normalization to preserve time.Time values instead of
 // converting them to strings.
-func PreserveTime(b bool) NormalizeOption {
+func NormalizeTime(b bool) NormalizeOption {
 	return NormalizeOptionFunc(func(options *NormalizeOptions) {
-		options.PreserveTime = b
-	})
-}
-
-// ParseTime causes normalization to attempt to coerce strings into
-// time.Time.  If parsing fails, the string is left as is.  This
-// setting has no effect if PreserveTime is not also set.
-func ParseTime(b bool) NormalizeOption {
-	return NormalizeOptionFunc(func(options *NormalizeOptions) {
-		options.ParseTime = b
+		options.NormalizeTime = b
 	})
 }
 
@@ -763,7 +749,7 @@ func NormalizeWithOptions(v interface{}, opt NormalizeOptions) (interface{}, err
 func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err error) {
 	v2 = v
 	copied := false
-	if options.PreserveTime {
+	if options.NormalizeTime {
 		switch t := v.(type) {
 		case time.Time:
 			return
@@ -774,12 +760,10 @@ func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err er
 			v2 = *t
 			return
 		case string:
-			if options.ParseTime {
-				tm, err := time.Parse(time.RFC3339Nano, t)
-				if err == nil {
-					v2 = tm
-					return v2, nil
-				}
+			tm, err := time.Parse(time.RFC3339Nano, t)
+			if err == nil {
+				v2 = tm
+				return v2, nil
 			}
 		}
 	}
@@ -817,7 +801,7 @@ func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err er
 		if options.Marshal {
 			switch m := v.(type) {
 			case json.Marshaler:
-				return slowNormalize(m)
+				return slowNormalize(m, options)
 			case json.RawMessage:
 				// This handles a special case for golang < 1.8
 				// Below 1.8, *json.RawMessage implemented json.Marshaler, but
@@ -825,7 +809,7 @@ func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err er
 				// it can already be nil)
 				// This was fixed in 1.8, so as of 1.8, we'll never hit this case (the
 				// first case will be hit)
-				return slowNormalize(&m)
+				return slowNormalize(&m, options)
 			}
 		}
 		rv := reflect.ValueOf(v)
@@ -847,7 +831,7 @@ func normalize(v interface{}, options *NormalizeOptions) (v2 interface{}, err er
 			v2 = s
 		case options.Marshal:
 			// marshal/unmarshal
-			return slowNormalize(v)
+			return slowNormalize(v, options)
 		default:
 			// return value unchanged
 			return
@@ -905,7 +889,7 @@ func marshal(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
 
-func slowNormalize(v interface{}) (interface{}, error) {
+func slowNormalize(v interface{}, options *NormalizeOptions) (interface{}, error) {
 	b, err := marshal(v)
 	if err != nil {
 		return nil, err
@@ -913,6 +897,13 @@ func slowNormalize(v interface{}) (interface{}, error) {
 
 	var v2 interface{}
 	err = json.Unmarshal(b, &v2)
+
+	// if we're normalizing times, we need to run the result back through the normalize function
+	// to convert the string times to time.Time values
+	if options.NormalizeTime {
+		return normalize(v2, options)
+	}
+
 	return v2, err
 }
 
@@ -1039,8 +1030,8 @@ func (p Path) String() string {
 // isn't a slice.
 func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, error) {
 	opt := NormalizeOptions{
-		Marshal:      true,
-		PreserveTime: true,
+		Marshal:       true,
+		NormalizeTime: true,
 	}
 	for _, option := range opts {
 		option.Apply(&opt)
