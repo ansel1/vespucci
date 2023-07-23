@@ -586,84 +586,101 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		}
 		return true
 	case []interface{}:
-		switch t2 := v2.(type) {
-		default:
-			if ctx.equiv {
-				// to be equivalent, both sides need to be a slice
-				return false
-			}
-			for _, el1 := range t1 {
-				if contains(el1, v2, ctx) {
-					return true
-				}
-			}
-			ctx.traceMsg(`v1 does not contain v2`, v1, v2)
-			return false
-		case []interface{}:
-			if ctx.equiv && len(t1) != len(t2) {
-				// if equiv, both slices should be the same length
-				ctx.traceMsg(fmt.Sprintf(`v1 len %v is not the same as v2 len %v`, len(t1), len(t2)), v1, v2)
-				return false
-			}
-
-			if ctx.matchEmptyValues && len(t2) == 0 {
-				return true
-			}
-
-			// in equiv mode, keep track of which members of v1 were already matched
-			// to v2 values.  We can skip those when we scan v1.
-			var bits uint64
-			var bitmap map[int]bool
-			if len(t1) > 64 && ctx.equiv {
-				bitmap = make(map[int]bool)
-			}
-		Searchv2:
-			for i, val2 := range t2 {
-				for i1, value := range t1 {
-					if contains(value, val2, ctx) {
-						if ctx.equiv {
-							if bitmap != nil {
-								bitmap[i1] = true
-							} else {
-								bits |= 1 << i1
-							}
-						}
-						continue Searchv2
-					}
-				}
-				ctx.traceMsg(fmt.Sprintf(`v1 does not contain v2[%v]: "%+v"`, i, val2), v1, v2)
-				return false
-			}
-
-			if ctx.equiv {
-			Searchv1:
-				for i, val1 := range t1 {
-					// check whether we already matched val1 one when we scanned t2
-					if bitmap != nil {
-						if bitmap[i] {
-							continue Searchv1
-						}
-					} else {
-						mask := uint64(1) << i
-						if mask&bits == mask {
-							continue Searchv1
-						}
-					}
-
-					for _, val2 := range t2 {
-						if contains(val1, val2, ctx) {
-							continue Searchv1
-						}
-					}
-					ctx.traceMsg(fmt.Sprintf(`v2 does not contain v1[%v]:"%+v"`, i, val1), v1, v2)
-					return false
-				}
-			}
-			return true
-		}
+		return sliceMatch(t1, v2, ctx)
 	default:
 		// since we normalized both values, we should not hit this.
 		return reflect.DeepEqual(v1, v2)
+	}
+}
+
+func sliceMatch(t1 []any, v2 any, ctx *containsCtx) bool {
+	// temporarily turn off explain while searching for matching elements
+	// since the results will be thrown out anyway
+	explain := ctx.explain
+	ctx.explain = false
+	defer func() {
+		ctx.explain = explain
+	}()
+
+	switch t2 := v2.(type) {
+	default:
+		if ctx.equiv {
+			// to be equivalent, both sides need to be a slice
+			return false
+		}
+
+		for _, el1 := range t1 {
+			if contains(el1, v2, ctx) {
+				return true
+			}
+		}
+		ctx.explain = explain
+		ctx.traceMsg(`v1 does not contain v2`, t1, v2)
+		return false
+	case []interface{}:
+		if ctx.equiv && len(t1) != len(t2) {
+			// if equiv, both slices should be the same length
+			ctx.explain = explain
+			ctx.traceMsg(fmt.Sprintf(`v1 len %v is not the same as v2 len %v`, len(t1), len(t2)), t1, v2)
+			return false
+		}
+
+		if ctx.matchEmptyValues && len(t2) == 0 {
+			return true
+		}
+
+		// in equiv mode, keep track of which members of v1 were already matched
+		// to v2 values.  We can skip those when we scan v1.
+		var bits uint64
+		var bitmap map[int]bool
+		if len(t1) > 64 && ctx.equiv {
+			bitmap = make(map[int]bool)
+		}
+	Searchv2:
+		for i, val2 := range t2 {
+			for i1, value := range t1 {
+				if contains(value, val2, ctx) {
+					if ctx.equiv {
+						if bitmap != nil {
+							bitmap[i1] = true
+						} else {
+							bits |= 1 << i1
+						}
+					}
+					continue Searchv2
+				}
+			}
+			ctx.explain = explain
+			ctx.traceMsg(fmt.Sprintf(`v1 does not contain v2[%v]: "%+v"`, i, val2), t1, v2)
+			return false
+		}
+
+		if ctx.equiv {
+		Searchv1:
+			for i, val1 := range t1 {
+				// check whether we already matched val1 one when we scanned t2
+				if bitmap != nil {
+					if bitmap[i] {
+						continue Searchv1
+					}
+				} else {
+					mask := uint64(1) << i
+					if mask&bits == mask {
+						continue Searchv1
+					}
+				}
+
+				for _, val2 := range t2 {
+					if contains(val1, val2, ctx) {
+						continue Searchv1
+					}
+				}
+				ctx.explain = explain
+				ctx.traceMsg(fmt.Sprintf(`v2 does not contain v1[%v]:"%+v"`, i, val1), t1, v2)
+				return false
+			}
+		}
+		return true
 	}
 }
 
