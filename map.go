@@ -393,9 +393,9 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 
 type containsCtx struct {
 	Match
-	currentPath []string
-	explain     bool // if true, set mismatchMsg to string explaining reason for match failure
-	equiv       bool // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
+	currentPath []string // path to current location in tree
+	explain     bool     // if true, set mismatchMsg to string explaining reason for match failure
+	equiv       bool     // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
 
 	strBuf []string // re-usable scratch space
 
@@ -407,6 +407,8 @@ type containsCtx struct {
 	truncateTimes    time.Duration // truncate times (round down) to the nearest increment
 	timeDelta        time.Duration // allow times to match as long as they are within this delta
 	ignoreTimeZone   bool          // allow times to match even if time zones are different
+
+	buf strings.Builder // scratch space for constructing trace messages
 	NormalizeOptions
 }
 
@@ -431,6 +433,7 @@ func (c *containsCtx) release() {
 	c.NormalizeOptions.Copy = false
 	c.NormalizeOptions.Deep = false
 	c.NormalizeOptions.Marshal = false
+	c.buf.Reset()
 	ctxPool.Put(c)
 }
 
@@ -459,16 +462,14 @@ func (c *containsCtx) traceMsg(v1, v2 interface{}, msg string, msgArgs ...any) {
 
 	c.Path = strings.TrimPrefix(strings.Join(c.currentPath, ""), ".")
 
-	var b strings.Builder
-
-	_, _ = fmt.Fprintf(&b, msg, msgArgs...)
+	_, _ = fmt.Fprintf(&c.buf, msg, msgArgs...)
 	if len(c.Path) > 0 {
-		_, _ = fmt.Fprintf(&b, "\nv1.%s -> %#v\nv2.%s -> %#v", c.Path, v1, c.Path, v2)
+		_, _ = fmt.Fprintf(&c.buf, "\nv1.%s -> %#v\nv2.%s -> %#v", c.Path, v1, c.Path, v2)
 	} else {
-		_, _ = fmt.Fprintf(&b, "\nv1 -> %#v\nv2 -> %#v", v1, v2)
+		_, _ = fmt.Fprintf(&c.buf, "\nv1 -> %#v\nv2 -> %#v", v1, v2)
 	}
 
-	c.Message = b.String()
+	c.Message = c.buf.String()
 
 	c.V1 = v1
 	c.V2 = v2
