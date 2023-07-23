@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -324,7 +325,7 @@ func Trace(s *string) ContainsOption {
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
-	return containsMatch(v1, v2, &containsCtx{}, options...).Matches
+	return containsMatch(v1, v2, newCtx(), options...).Matches
 }
 
 // Match is the result of ContainsMatch or EquivalentMatch.  It reports whether
@@ -346,7 +347,9 @@ type Match struct {
 // ContainsMatch is the same as Contains, but returns the normalized versions of v1 and v2 used
 // in the comparison.
 func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
-	return containsMatch(v1, v2, &containsCtx{explain: true}, options...)
+	ctx := newCtx()
+	ctx.explain = true
+	return containsMatch(v1, v2, ctx, options...)
 }
 
 func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Match {
@@ -375,6 +378,8 @@ func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Matc
 		*ctx.trace = match.Message
 	}
 
+	ctx.release()
+
 	return match
 }
 
@@ -390,13 +395,18 @@ func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Matc
 //
 // b is true because "thefox" contains "fox", even though the inverse is not true
 func Equivalent(v1, v2 interface{}, options ...ContainsOption) bool {
-	return containsMatch(v1, v2, &containsCtx{equiv: true}, options...).Matches
+	ctx := newCtx()
+	ctx.equiv = true
+	return containsMatch(v1, v2, ctx, options...).Matches
 }
 
 // EquivalentMatch is the same as Equivalent, but returns the normalized versions of v1 and v2 used
 // in the comparison.
 func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
-	return containsMatch(v1, v2, &containsCtx{equiv: true, explain: true}, options...)
+	ctx := newCtx()
+	ctx.equiv = true
+	ctx.explain = true
+	return containsMatch(v1, v2, ctx, options...)
 }
 
 type containsCtx struct {
@@ -414,11 +424,47 @@ type containsCtx struct {
 	NormalizeOptions
 }
 
-func (c *containsCtx) strScratch() []string {
-	if c.strBuf == nil {
-		c.strBuf = make([]string, 0, 20)
+func (c *containsCtx) release() {
+	c.v1 = nil
+	c.v2 = nil
+	c.eventPath = ""
+	c.path = c.path[:0]
+	c.mismatchMsg = ""
+	c.explain = false
+	c.err = nil
+	c.equiv = false
+	c.strBuf = c.strBuf[:0]
+	c.containsOptions.stringContains = false
+	c.containsOptions.trace = nil
+	c.containsOptions.matchEmptyValues = false
+	c.containsOptions.parseTimes = false
+	c.containsOptions.timeDelta = 0
+	c.containsOptions.roundTimes = 0
+	c.containsOptions.truncateTimes = 0
+	c.containsOptions.ignoreTimeZone = false
+	c.NormalizeOptions.NormalizeTime = false
+	c.NormalizeOptions.Copy = false
+	c.NormalizeOptions.Deep = false
+	c.NormalizeOptions.Marshal = false
+	ctxPool.Put(c)
+}
+
+var ctxPool sync.Pool
+
+func init() {
+	ctxPool.New = func() any {
+		return &containsCtx{
+			strBuf: make([]string, 0, 20),
+			path:   make([]string, 10),
+		}
 	}
-	return c.strBuf[len(c.strBuf):]
+}
+func newCtx() *containsCtx {
+	return ctxPool.Get().(*containsCtx)
+}
+
+func (c *containsCtx) strScratch() []string {
+	return c.strBuf[:0]
 }
 
 func (c *containsCtx) traceMsg(v1, v2 interface{}, msg string, msgArgs ...any) {
