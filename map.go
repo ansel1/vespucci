@@ -38,7 +38,7 @@ func Keys(m map[string]interface{}) (keys []string) {
 // already in v1's slice.  This won't do anything fancy with
 // slices that have duplicate values.  Order is ignored.  E.g.:
 //
-//    [5, 6, 7] + [5, 5, 5, 4] = [5, 6, 7, 4]
+//	[5, 6, 7] + [5, 5, 5, 4] = [5, 6, 7, 4]
 //
 // The return value is a copy.  v1 and v2 are not modified.
 func Merge(v1, v2 interface{}, opts ...NormalizeOption) interface{} {
@@ -187,22 +187,21 @@ var EmptyMapValuesMatchAny = EmptyValuesMatchAny
 //
 // This option can also be used to test for the presence of keys in v1 without needing to test the value:
 //
-//     v1 := map[string]interface{}{"color":"blue"}
-//     v2 := map[string]interface{}{"color":nil}
-//     Contains(v1, v2)  // false
-//     Contains(v1, v2, EmptyMapValuesMatchAny()) // true
-//     v1 := map[string]interface{}{}
-//     Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because v1 doesn't have "color" key
+//	v1 := map[string]interface{}{"color":"blue"}
+//	v2 := map[string]interface{}{"color":nil}
+//	Contains(v1, v2)  // false
+//	Contains(v1, v2, EmptyMapValuesMatchAny()) // true
+//	v1 := map[string]interface{}{}
+//	Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because v1 doesn't have "color" key
 //
 // Another use is testing the general type of the value:
 //
-//     v1 := map[string]interface{}{"size":5}
-//     v2 := map[string]interface{}{"size":0}
-//     Contains(v1, v2)  // false
-//     Contains(v1, v2, EmptyMapValuesMatchAny()) // true
-//     v2 := map[string]interface{}{"size":""}
-//     Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because type of value doesn't match (v1: number, v2: string)
-//
+//	v1 := map[string]interface{}{"size":5}
+//	v2 := map[string]interface{}{"size":0}
+//	Contains(v1, v2)  // false
+//	Contains(v1, v2, EmptyMapValuesMatchAny()) // true
+//	v2 := map[string]interface{}{"size":""}
+//	Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because type of value doesn't match (v1: number, v2: string)
 func EmptyValuesMatchAny() ContainsOption {
 	return func(o *containsOptions) {
 		o.matchEmptyValues = true
@@ -269,8 +268,8 @@ func IgnoreTimeZones(b bool) ContainsOption {
 //
 // Without this option, strings (like other primitive values) must match exactly.
 //
-//     Contains("brown fox", "fox") // false
-//     Contains("brown fox", "fox", StringContains()) // true
+//	Contains("brown fox", "fox") // false
+//	Contains("brown fox", "fox", StringContains()) // true
 func StringContains() ContainsOption {
 	return func(o *containsOptions) {
 		o.stringContains = true
@@ -280,11 +279,11 @@ func StringContains() ContainsOption {
 // Trace sets `s` to a string describing the path to the values where containment was false.  Helps
 // debugging why one value doesn't contain another.  Sample output:
 //
-//     -> v1: map[time:2017-03-03T14:08:30.097698864-05:00]
-//     -> v2: map[time:0001-01-01T00:00:00Z]
-//     -> "time"
-//     --> v1: 2017-03-03T14:08:30.097698864-05:00
-//     --> v2: 0001-01-01T00:00:00Z
+//	-> v1: map[time:2017-03-03T14:08:30.097698864-05:00]
+//	-> v2: map[time:0001-01-01T00:00:00Z]
+//	-> "time"
+//	--> v1: 2017-03-03T14:08:30.097698864-05:00
+//	--> v2: 0001-01-01T00:00:00Z
 //
 // If `s` is nil, it does nothing.
 func Trace(s *string) ContainsOption {
@@ -299,29 +298,29 @@ func Trace(s *string) ContainsOption {
 // A map v1 "contains" another map v2 if v1 has contains all the keys in v2, and
 // if the values in v2 are contained by the corresponding values in v1.
 //
-//     {"color":"red"} contains {}
-//     {"color":"red"} contains {"color":"red"}
-//     {"color":"red","flavor":"beef"} contains {"color":"red"}
-//     {"labels":{"color":"red","flavor":"beef"}} contains {"labels":{"flavor":"beef"}}
-//     {"tags":["red","green","blue"]} contains {"tags":["red","green"]}
+//	{"color":"red"} contains {}
+//	{"color":"red"} contains {"color":"red"}
+//	{"color":"red","flavor":"beef"} contains {"color":"red"}
+//	{"labels":{"color":"red","flavor":"beef"}} contains {"labels":{"flavor":"beef"}}
+//	{"tags":["red","green","blue"]} contains {"tags":["red","green"]}
 //
 // A scalar value v1 contains value v2 if they are equal.
 //
-//     5 contains 5
-//     "red" contains "red"
+//	5 contains 5
+//	"red" contains "red"
 //
 // A slice v1 contains a slice v2 if all the values in v2 are contained by at
 // least one value in v1:
 //
-//     ["red","green"] contains ["red"]
-//     ["red"] contains ["red","red","red"]
-//     // In this case, the single value in v1 contains each of the values
-//     // in v2, so v1 contains v2
-//     [{"type":"car","color":"red","wheels":4}] contains [{"type":"car"},{"color","red"},{"wheels":4}]
+//	["red","green"] contains ["red"]
+//	["red"] contains ["red","red","red"]
+//	// In this case, the single value in v1 contains each of the values
+//	// in v2, so v1 contains v2
+//	[{"type":"car","color":"red","wheels":4}] contains [{"type":"car"},{"color","red"},{"wheels":4}]
 //
 // A slice v1 also can contain a *scalar* value v2:
 //
-//     ["red"] contains "red"
+//	["red"] contains "red"
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
@@ -368,12 +367,12 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 // Equivalent checks if v1 and v2 are approximately deeply equal to each other.
 // It takes the same comparison options as Contains.  It is equivalent to:
 //
-//     Equivalent(v1, v2) == Contains(v1, v2) && Contains(v2, v1)
+//	Equivalent(v1, v2) == Contains(v1, v2) && Contains(v2, v1)
 //
 // ContainsOptions which only work in one direction, like StringContains, will
 // always treat v2 as a pattern or rule to match v1 against.  For example:
 //
-//     b := Equivalent("thefox", "fox", StringContains())
+//	b := Equivalent("thefox", "fox", StringContains())
 //
 // b is true because "thefox" contains "fox", even though the inverse is not true
 func Equivalent(v1, v2 interface{}, options ...ContainsOption) bool {
@@ -948,9 +947,8 @@ type Path []interface{}
 // ParsePath parses a string path into a Path slice.  String paths look
 // like:
 //
-//     user.name.first
-//     user.addresses[3].street
-//
+//	user.name.first
+//	user.addresses[3].street
 func ParsePath(path string) (Path, error) {
 	var parsedPath Path
 	parts := strings.Split(path, ".")
@@ -1009,13 +1007,13 @@ func (p Path) String() string {
 // Get extracts the value at path from v.
 // Path is in the form:
 //
-//     response.things[2].color.red
+//	response.things[2].color.red
 //
 // You can use `merry` to test the types of return errors:
 //
-//     _, err := maps.Get("","")
-//     if merry.Is(err, maps.PathNotFoundError) {
-//       ...
+//	_, err := maps.Get("","")
+//	if merry.Is(err, maps.PathNotFoundError) {
+//	  ...
 //
 // Returns PathNotFoundError if the next key in the path is not found.
 //
@@ -1091,11 +1089,11 @@ func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, erro
 // If v is a pointer, it is empty if the pointer is nil or invalid, but not
 // empty if it points to a value, even if that value is zero.  For example:
 //
-//     Empty(0)  // true
-//     i := 0
-//     Empty(&i) // false
-//     Empty(Widget{}) // true, zero value
-//     Empty(&Widget{}) // false, non-nil pointer
+//	Empty(0)  // true
+//	i := 0
+//	Empty(&i) // false
+//	Empty(Widget{}) // true, zero value
+//	Empty(&Widget{}) // false, non-nil pointer
 //
 // Maps, slices, arrays, and channels are considered empty if their
 // length is zero.
