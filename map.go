@@ -266,7 +266,7 @@ func StringContains() ContainsOption {
 	}
 }
 
-// Trace sets `s` to a string describing the currentPath to the values where containment was false.  Helps
+// Trace sets `s` to a string describing the path to the values where containment was false.  Helps
 // debugging why one value doesn't contain another.  Sample output:
 //
 //	-> v1: map[time:2017-03-03T14:08:30.097698864-05:00]
@@ -980,13 +980,13 @@ func Normalize(v1 interface{}, opts ...NormalizeOption) (interface{}, error) {
 	return normalize(v1, &opt)
 }
 
-// PathNotFoundError indicates the requested currentPath was not present in the value.
+// PathNotFoundError indicates the requested path was not present in the value.
 var PathNotFoundError = merry.New("Path not found")
 
-// PathNotMapError indicates the value at the currentPath is not a map.
+// PathNotMapError indicates the value at the path is not a map.
 var PathNotMapError = merry.New("Path not map")
 
-// PathNotSliceError indicates the value at the currentPath is not a slice.
+// PathNotSliceError indicates the value at the path is not a slice.
 var PathNotSliceError = merry.New("Path not slice")
 
 // IndexOutOfBoundsError indicates the index doesn't exist in the slice.
@@ -995,19 +995,23 @@ var IndexOutOfBoundsError = merry.New("Index out of bounds")
 // Path is a slice of either strings or slice indexes (ints).
 type Path []interface{}
 
-// ParsePath parses a string currentPath into a Path slice.  String paths look
+// ParsePath parses a string path into a Path slice.  String paths look
 // like:
 //
 //	user.name.first
 //	user.addresses[3].street
 func ParsePath(path string) (Path, error) {
-	var parsedPath Path
+	if len(path) == 0 {
+		return nil, nil
+	}
+
 	parts := strings.Split(path, ".")
+	parsedPath := make(Path, 0, len(parts)+strings.Count(path, "["))
 	for i := 0; i < len(parts); i++ {
 		part := parts[i]
 
 		arrayIdx := -1
-		// first check of the currentPath part ends in an array index, like
+		// first check of the path part ends in an array index, like
 		//
 		//     tags[2]
 		//
@@ -1055,7 +1059,7 @@ func (p Path) String() string {
 	return buf.String()
 }
 
-// Get extracts the value at currentPath from v.
+// Get extracts the value at path from v.
 // Path is in the form:
 //
 //	response.things[2].color.red
@@ -1066,7 +1070,7 @@ func (p Path) String() string {
 //	if merry.Is(err, maps.PathNotFoundError) {
 //	  ...
 //
-// Returns PathNotFoundError if the next key in the currentPath is not found.
+// Returns PathNotFoundError if the next key in the path is not found.
 //
 // Returns PathNotMapError if evaluating a key against a value which is not
 // a map (e.g. a slice or a primitive value, against
@@ -1090,7 +1094,7 @@ func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, erro
 
 	parsedPath, err := ParsePath(path)
 	if err != nil {
-		return nil, merry.Prepend(err, "Couldn't parse the currentPath")
+		return nil, merry.Prepend(err, "Couldn't parse the path")
 	}
 	out := v
 	for i, part := range parsedPath {
@@ -1129,7 +1133,7 @@ func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, erro
 				return nil, PathNotSliceError.Here().WithMessage("v is not a slice")
 			}
 		default:
-			panic(merry.Errorf("Unexpected type for parsed currentPath element: %#v", part))
+			panic(merry.Errorf("Unexpected type for parsed path element: %#v", part))
 		}
 	}
 	return out, nil

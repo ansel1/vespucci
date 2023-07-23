@@ -1213,10 +1213,34 @@ const largeTestVal1 string = `
 		"neverExported": true,
 		"neverExportable": false,
 		"emptyMaterial": false,
-		"uuid": "a7594090-12b0-40eb-b9ab-92d6f5f78fab"
+		"uuid": "a7594090-12b0-40eb-b9ab-92d6f5f78fab",
+		"obligations":{
+			"blue": {
+				"details": {
+					"color": "blue"
+				}
+			}
+		}
 	}
 }
 `
+
+func BenchmarkGet(b *testing.B) {
+	// factor out the time to normalize
+	n1, err := Normalize(json.RawMessage(largeTestVal1))
+	require.NoError(b, err)
+
+	// make sure it works as expected
+	get, err := Get(n1, "environment.obligations.blue.details.color")
+	require.NoError(b, err)
+	require.Equal(b, "blue", get)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = Get(n1, "environment.obligations.blue.details.color")
+
+	}
+}
 
 func BenchmarkContains(b *testing.B) {
 	// factor out the time to normalize
