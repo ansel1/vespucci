@@ -516,9 +516,9 @@ func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 }
 
 func dive(path string, v1, v2 interface{}, ctx *containsCtx) bool {
-	ctx.currentPath = append(ctx.currentPath, path)
+	ctx.currentPath = append(ctx.currentPath, ".", path)
 	b1 := contains(v1, v2, ctx)
-	ctx.currentPath = ctx.currentPath[:len(ctx.currentPath)-1]
+	ctx.currentPath = ctx.currentPath[:len(ctx.currentPath)-2]
 	return b1
 }
 
@@ -596,7 +596,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			if !present {
 				extraKeys = append(extraKeys, key)
 			} else {
-				if !dive("."+key, val1, val2, ctx) {
+				if !dive(key, val1, val2, ctx) {
 					return false
 				}
 			}
