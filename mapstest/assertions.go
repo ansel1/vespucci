@@ -24,7 +24,7 @@ const Strict strictMarker = 0
 //
 // These default options can be suppressed by passing Strict in the options:
 //
-//     AssertContains(t, v1, v2, Strict)
+//	AssertContains(t, v1, v2, Strict)
 //
 // optsMsgAndArgs can contain a string msg and a series of args, which
 // will be formatted into the assertion failure message.

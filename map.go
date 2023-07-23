@@ -324,7 +324,7 @@ func Trace(s *string) ContainsOption {
 //
 // A struct v1 contains a struct v2 if they are deeply equal (using reflect.DeepEquals)
 func Contains(v1, v2 interface{}, options ...ContainsOption) bool {
-	return ContainsMatch(v1, v2, options...).Matches
+	return containsMatch(v1, v2, &containsCtx{}, options...).Matches
 }
 
 // Match is the result of ContainsMatch or EquivalentMatch.  It reports whether
@@ -346,22 +346,36 @@ type Match struct {
 // ContainsMatch is the same as Contains, but returns the normalized versions of v1 and v2 used
 // in the comparison.
 func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
-	ctx := containsCtx{}
+	return containsMatch(v1, v2, &containsCtx{explain: true}, options...)
+}
+
+func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Match {
 	for _, o := range options {
 		o(&ctx.containsOptions)
 	}
-	ctx.Copy = true
-	ctx.Marshal = true
+
 	ctx.NormalizeTime = ctx.parseTimes
 
-	return Match{
-		Matches: contains(v1, v2, &ctx),
+	if ctx.trace != nil {
+		ctx.explain = true
+	}
+
+	ctx.Marshal = true
+
+	match := Match{
+		Matches: contains(v1, v2, ctx),
 		V1:      ctx.v1,
 		V2:      ctx.v2,
 		Error:   ctx.err,
 		Path:    ctx.eventPath,
 		Message: ctx.mismatchMsg,
 	}
+
+	if ctx.trace != nil {
+		*ctx.trace = match.Message
+	}
+
+	return match
 }
 
 // Equivalent checks if v1 and v2 are approximately deeply equal to each other.
@@ -376,30 +390,13 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 //
 // b is true because "thefox" contains "fox", even though the inverse is not true
 func Equivalent(v1, v2 interface{}, options ...ContainsOption) bool {
-	return EquivalentMatch(v1, v2, options...).Matches
+	return containsMatch(v1, v2, &containsCtx{equiv: true}, options...).Matches
 }
 
 // EquivalentMatch is the same as Equivalent, but returns the normalized versions of v1 and v2 used
 // in the comparison.
 func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
-	ctx := containsCtx{}
-	for _, o := range options {
-		o(&ctx.containsOptions)
-	}
-
-	ctx.Copy = true
-	ctx.Marshal = true
-	ctx.NormalizeTime = ctx.parseTimes
-	ctx.equiv = true
-
-	return Match{
-		Matches: contains(v1, v2, &ctx),
-		V1:      ctx.v1,
-		V2:      ctx.v2,
-		Error:   ctx.err,
-		Path:    ctx.eventPath,
-		Message: ctx.mismatchMsg,
-	}
+	return containsMatch(v1, v2, &containsCtx{equiv: true, explain: true}, options...)
 }
 
 type containsCtx struct {
@@ -408,6 +405,7 @@ type containsCtx struct {
 	eventPath   string
 	path        []string
 	mismatchMsg string
+	explain     bool  // if true, set mismatchMsg to string explaining reason for match failure
 	err         error // stores last normalization error for v1 and v2
 	equiv       bool  // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
 
@@ -424,6 +422,10 @@ func (c *containsCtx) strScratch() []string {
 }
 
 func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
+	if !c.explain {
+		return
+	}
+
 	c.eventPath = strings.Join(c.path, "")
 	path1 := "v1" + c.eventPath
 	path2 := "v2" + c.eventPath
@@ -435,10 +437,6 @@ func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
 	c.v2 = v2
 
 	c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v1, path2, v2)
-
-	if c.trace != nil {
-		*c.trace = c.mismatchMsg
-	}
 }
 
 func (c *containsCtx) traceNotEqual(v1, v2 interface{}) {

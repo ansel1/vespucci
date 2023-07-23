@@ -37,7 +37,7 @@ update:
 	go mod tidy
 
 tools:
-	go get -u golang.org/x/tools/cmd/cover
-	go get -u golang.org/x/lint/golint
+	go install golang.org/x/tools/cmd/cover@latest
+	go install golang.org/x/lint/golint@latest
 
 .PHONY: all fmt lint vet test cover build clean ensure update tools proto

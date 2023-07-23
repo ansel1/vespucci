@@ -705,7 +705,7 @@ func TestEquivalentMatch(t *testing.T) {
 	assert.True(t, ok, "should have been a channel, was %T", m.V2)
 }
 
-type dict = map[string]interface{}
+type dict = map[string]any
 
 func TestConflicts(t *testing.T) {
 	tests := []struct {
@@ -1125,6 +1125,168 @@ func TestParsePath(t *testing.T) {
 	}
 
 	assert.Equal(t, "a.b[3]", Path{"a", "b", 3, "c", 4}[0:3].String())
+}
+
+const largeTestVal1 string = `
+{
+	"principal": {
+		"acct": "kylo:57b0b351-68f3-424c-be14-68a4a39d1255:admin:accounts:57b0b351-68f3-424c-be14-68a4a39d1255",
+		"app": "ncryptify:gemalto:admin:apps:kylo",
+		"aud": "3ee1f89e-6340-4123-91d7-a39eee330586",
+		"cnf": null,
+		"cust": {
+		"groups": [
+		  "CCKM Users"
+		],
+		"sid": "b0951adf-4521-40a9-8f6d-493bbb52af99",
+		"zone_id": "00000000-0000-0000-0000-000000000000"
+		},
+		"dev_acct": "ncryptify:gemalto:admin:accounts:gemalto",
+		"exp": 1688582702,
+		"given_name": "",
+		"iat": 1688582102,
+		"ident": "ncryptify:gemalto:admin:identities:bob-bob",
+		"iss": "kylo",
+		"jti": "560bb8a3-42e7-46c5-9252-2c0587cf8ab2",
+		"name": "",
+		"nickname": "",
+		"preferred_username": "bob",
+		"sub": "bob",
+		"sub_acct": "kylo:57b0b351-68f3-424c-be14-68a4a39d1255:admin:accounts:57b0b351-68f3-424c-be14-68a4a39d1255",
+		"user": "ncryptify:gemalto:admin:users:bob"
+	},
+	"resource": {
+		"id": "142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36",
+		"uri": "kylo:kylo:vault:secrets:ks-142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36-v0",
+		"account": "kylo:kylo:admin:accounts:kylo",
+		"application": "ncryptify:gemalto:admin:apps:kylo",
+		"devAccount": "ncryptify:gemalto:admin:accounts:gemalto",
+		"createdAt": "2023-07-12T14:14:27.907976Z",
+		"name": "ks-142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36",
+		"updatedAt": "2023-07-12T14:14:27.907976Z",
+		"activationDate": "2023-07-12T14:14:27.890215Z",
+		"state": "Active",
+		"meta": {
+			"description": "connection manager credential",
+			"service_name": "connectionmgmt",
+			"resource_type": "connections",
+			"connection_uri": "kylo:kylo:connectionmgmt:connections:gcp-connection2-fc9d0a07-cf98-4d97-bce6-99a8ef9baf81"
+		},
+		"objectType": "Opaque Object",
+		"sha1Fingerprint": "5725a93e4fa07b9d",
+		"sha256Fingerprint": "691e82c107ba039ae5ed6b6863e2044ab8178a0fb40eabcb746e53f454d3bab7",
+		"defaultIV": "3fa759e928dda71f84ffd631b2594d54",
+		"version": 0,
+		"algorithm": "OPAQUE",
+		"unexportable": false,
+		"undeletable": false,
+		"neverExported": true,
+		"neverExportable": false,
+		"emptyMaterial": false,
+		"uuid": "a7594090-12b0-40eb-b9ab-92d6f5f78fab"
+	},
+	"environment": {
+		"id": "142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36",
+		"uri": "kylo:kylo:vault:secrets:ks-142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36-v0",
+		"account": "kylo:kylo:admin:accounts:kylo",
+		"application": "ncryptify:gemalto:admin:apps:kylo",
+		"devAccount": "ncryptify:gemalto:admin:accounts:gemalto",
+		"createdAt": "2023-07-12T14:14:27.907976Z",
+		"name": "ks-142514aecaff4329876579935829a052fcaf7753343843df833b2bfae72f2b36",
+		"updatedAt": "2023-07-12T14:14:27.907976Z",
+		"activationDate": "2023-07-12T14:14:27.890215Z",
+		"state": "Active",
+		"meta": {
+			"description": "connection manager credential",
+			"service_name": "connectionmgmt",
+			"resource_type": "connections",
+			"connection_uri": "kylo:kylo:connectionmgmt:connections:gcp-connection2-fc9d0a07-cf98-4d97-bce6-99a8ef9baf81"
+		},
+		"objectType": "Opaque Object",
+		"sha1Fingerprint": "5725a93e4fa07b9d",
+		"sha256Fingerprint": "691e82c107ba039ae5ed6b6863e2044ab8178a0fb40eabcb746e53f454d3bab7",
+		"defaultIV": "3fa759e928dda71f84ffd631b2594d54",
+		"version": 0,
+		"algorithm": "OPAQUE",
+		"unexportable": false,
+		"undeletable": false,
+		"neverExported": true,
+		"neverExportable": false,
+		"emptyMaterial": false,
+		"uuid": "a7594090-12b0-40eb-b9ab-92d6f5f78fab"
+	}
+}
+`
+
+func BenchmarkContains(b *testing.B) {
+	// factor out the time to normalize
+	n1, err := Normalize(json.RawMessage(largeTestVal1))
+	require.NoError(b, err)
+
+	matchingValue, err := Normalize(json.RawMessage(`
+{
+	"principal": {
+		"cust": {
+			"groups": ["CCKM Users"]
+		}
+	}
+}	
+	`))
+	require.NoError(b, err)
+
+	notMatchingValue, err := Normalize(json.RawMessage(`
+{
+	"principal": {
+		"cust": {
+			"groups": ["blue"]
+		}
+	}
+}	
+	`))
+	require.NoError(b, err)
+
+	b.Run("containsMismatchWithTrace", func(b *testing.B) {
+		var traceMsg string
+
+		for i := 0; i < b.N; i++ {
+			Contains(n1, notMatchingValue, Trace(&traceMsg))
+		}
+	})
+
+	b.Run("containsMismatchNoTrace", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Contains(n1, notMatchingValue)
+		}
+	})
+
+	b.Run("containsMatching", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Contains(n1, matchingValue)
+		}
+	})
+
+	b.Run("containsMatchMismatch", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ContainsMatch(n1, notMatchingValue)
+		}
+	})
+
+	b.Run("containsMatchMatching", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			ContainsMatch(n1, matchingValue)
+		}
+	})
+
+}
+
+func BenchmarkEquivalent(b *testing.B) {
+	// factor out the time to normalize
+	n1, err := Normalize(json.RawMessage(largeTestVal1))
+	require.NoError(b, err)
+
+	for i := 0; i < b.N; i++ {
+		Equivalent(n1, n1)
+	}
 }
 
 func BenchmarkMarshal(b *testing.B) {

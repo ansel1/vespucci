@@ -16,9 +16,7 @@ func TestAssertContains_message(t *testing.T) {
 	b := AssertContains(&mt, "red", "blue", "sample %v", 1)
 
 	require.False(t, b)
-	assert.Equal(t, `
-	Error Trace:	assertions.go:54
-	            				assertion_messages_test.go:16
+	assert.Contains(t, mt.msg, `
 	Error:      	v1 does not contain v2: 
 	            	values are not equal
 	            	v1 -> "red"
@@ -32,7 +30,7 @@ func TestAssertContains_message(t *testing.T) {
 	            	+(string) (len=4) "blue"
 	            	 
 	Messages:   	sample 1
-`, mt.msg)
+`)
 }
 
 func TestAssertNotContains_message(t *testing.T) {
@@ -41,14 +39,12 @@ func TestAssertNotContains_message(t *testing.T) {
 	b := AssertNotContains(&mt, "red", "red", "sample %v", 1)
 
 	require.False(t, b)
-	assert.Equal(t, `
-	Error Trace:	assertions.go:81
-	            				assertion_messages_test.go:41
+	assert.Contains(t, mt.msg, `
 	Error:      	v1 should not contain v2: 
 	            	v1: red
 	            	v2: red
 	Messages:   	sample 1
-`, mt.msg)
+`)
 }
 
 func TestAssertEquivalent_message(t *testing.T) {
@@ -57,9 +53,7 @@ func TestAssertEquivalent_message(t *testing.T) {
 	b := AssertEquivalent(&mt, "red", "blue", "sample %v", 1)
 
 	require.False(t, b)
-	assert.Equal(t, `
-	Error Trace:	assertions.go:120
-	            				assertion_messages_test.go:57
+	assert.Contains(t, mt.msg, `
 	Error:      	v1 !≈ v2: 
 	            	values are not equal
 	            	v1 -> "red"
@@ -73,7 +67,7 @@ func TestAssertEquivalent_message(t *testing.T) {
 	            	+(string) (len=4) "blue"
 	            	 
 	Messages:   	sample 1
-`, mt.msg)
+`)
 }
 
 func TestAssertNotEquivalent_message(t *testing.T) {
@@ -82,12 +76,10 @@ func TestAssertNotEquivalent_message(t *testing.T) {
 	b := AssertNotEquivalent(&mt, "red", "red", "sample %v", 1)
 
 	require.False(t, b)
-	assert.Equal(t, `
-	Error Trace:	assertions.go:147
-	            				assertion_messages_test.go:82
+	assert.Contains(t, mt.msg, `
 	Error:      	v1 should not ≈ v2: 
 	            	v1: red
 	            	v2: red
 	Messages:   	sample 1
-`, mt.msg)
+`)
 }
