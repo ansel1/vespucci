@@ -421,26 +421,30 @@ func (c *containsCtx) strScratch() []string {
 	return c.strBuf[len(c.strBuf):]
 }
 
-func (c *containsCtx) traceMsg(msg string, v1, v2 interface{}) {
+func (c *containsCtx) traceMsg(v1, v2 interface{}, msg string, msgArgs ...any) {
 	if !c.explain {
 		return
 	}
 
-	c.eventPath = strings.Join(c.path, "")
-	path1 := "v1" + c.eventPath
-	path2 := "v2" + c.eventPath
-	c.eventPath = strings.TrimPrefix(c.eventPath, ".")
+	c.eventPath = strings.TrimPrefix(strings.Join(c.path, ""), ".")
 
-	msg = strings.ReplaceAll(msg, "v1", path1)
-	msg = strings.ReplaceAll(msg, "v2", path2)
+	var b strings.Builder
+
+	_, _ = fmt.Fprintf(&b, msg, msgArgs...)
+	if len(c.eventPath) > 0 {
+		_, _ = fmt.Fprintf(&b, "\nv1.%s -> %#v\nv2.%s -> %#v", c.eventPath, v1, c.eventPath, v2)
+	} else {
+		_, _ = fmt.Fprintf(&b, "\nv1 -> %#v\nv2 -> %#v", v1, v2)
+	}
+
+	c.mismatchMsg = b.String()
+
 	c.v1 = v1
 	c.v2 = v2
-
-	c.mismatchMsg = fmt.Sprintf("%s\n%s -> %#v\n%s -> %#v", msg, path1, v1, path2, v2)
 }
 
 func (c *containsCtx) traceNotEqual(v1, v2 interface{}) {
-	c.traceMsg("values are not equal", v1, v2)
+	c.traceMsg(v1, v2, "values are not equal")
 }
 
 func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
@@ -463,7 +467,7 @@ func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 	}
 	if delta > ctx.timeDelta {
 		if ctx.timeDelta > 0 {
-			ctx.traceMsg(fmt.Sprintf(`delta of %v exceeds %v`, delta, ctx.timeDelta), tm1.String(), tm2.String())
+			ctx.traceMsg(tm1.String(), tm2.String(), `delta of %v exceeds %v`, delta, ctx.timeDelta)
 		} else {
 			ctx.traceNotEqual(tm1.String(), tm2.String())
 		}
@@ -473,7 +477,7 @@ func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 		return true
 	}
 	if tm1.Location() != tm2.Location() {
-		ctx.traceMsg(`time zone offsets don't match`, tm1.String(), tm2.String())
+		ctx.traceMsg(tm1.String(), tm2.String(), `time zone offsets don't match`)
 		return false
 	}
 	return true
@@ -490,12 +494,12 @@ func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	var nv1, nv2 interface{}
 	nv1, ctx.err = normalize(v1, &ctx.NormalizeOptions)
 	if ctx.err != nil {
-		ctx.traceMsg("err normalizing v1: "+ctx.err.Error(), v1, v2)
+		ctx.traceMsg(v1, v2, "err normalizing v1: %s", ctx.err.Error())
 		return false
 	}
 	nv2, ctx.err = normalize(v2, &ctx.NormalizeOptions)
 	if ctx.err != nil {
-		ctx.traceMsg("err normalizing v2: "+ctx.err.Error(), v1, v2)
+		ctx.traceMsg(v1, v2, "err normalizing v2: %s", ctx.err.Error())
 		return false
 	}
 	match := containsNormalized(nv1, nv2, ctx)
@@ -531,7 +535,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 
 		if ctx.stringContains {
 			if !strings.Contains(t1, s2) {
-				ctx.traceMsg(`v1 does not contain v2`, v1, v2)
+				ctx.traceMsg(v1, v2, `v1 does not contain v2`)
 				return false
 			}
 			return true
@@ -567,7 +571,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 		}
 		if len(extraKeys) > 0 {
 			sort.Strings(extraKeys)
-			ctx.traceMsg(fmt.Sprintf(`v2 contains extra keys: %v`, extraKeys), v1, v2)
+			ctx.traceMsg(v1, v2, `v2 contains extra keys: %v`, extraKeys)
 			return false
 		}
 		if ctx.equiv && len(t1) > len(t2) {
@@ -580,7 +584,7 @@ func containsNormalized(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 			}
 			if len(extraKeys) > 0 {
 				sort.Strings(extraKeys)
-				ctx.traceMsg(fmt.Sprintf(`v1 contains extra keys: %v`, extraKeys), v1, v2)
+				ctx.traceMsg(v1, v2, `v1 contains extra keys: %v`, extraKeys)
 				return false
 			}
 		}
@@ -615,13 +619,13 @@ func sliceMatch(t1 []any, v2 any, ctx *containsCtx) bool {
 			}
 		}
 		ctx.explain = explain
-		ctx.traceMsg(`v1 does not contain v2`, t1, v2)
+		ctx.traceMsg(t1, v2, `v1 does not contain v2`)
 		return false
 	case []interface{}:
 		if ctx.equiv && len(t1) != len(t2) {
 			// if equiv, both slices should be the same length
 			ctx.explain = explain
-			ctx.traceMsg(fmt.Sprintf(`v1 len %v is not the same as v2 len %v`, len(t1), len(t2)), t1, v2)
+			ctx.traceMsg(t1, v2, `v1 len %v is not the same as v2 len %v`, len(t1), len(t2))
 			return false
 		}
 
@@ -651,7 +655,7 @@ func sliceMatch(t1 []any, v2 any, ctx *containsCtx) bool {
 				}
 			}
 			ctx.explain = explain
-			ctx.traceMsg(fmt.Sprintf(`v1 does not contain v2[%v]: "%+v"`, i, val2), t1, v2)
+			ctx.traceMsg(t1, v2, `v1 does not contain v2[%v]: "%+v"`, i, val2)
 			return false
 		}
 
@@ -676,7 +680,7 @@ func sliceMatch(t1 []any, v2 any, ctx *containsCtx) bool {
 					}
 				}
 				ctx.explain = explain
-				ctx.traceMsg(fmt.Sprintf(`v2 does not contain v1[%v]:"%+v"`, i, val1), t1, v2)
+				ctx.traceMsg(t1, v2, `v2 does not contain v1[%v]:"%+v"`, i, val1)
 				return false
 			}
 		}
