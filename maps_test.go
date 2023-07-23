@@ -874,7 +874,7 @@ func TestNormalize(t *testing.T) {
 		{in: dict{"red": "green"}, out: dict{"red": "green"}},
 		{in: []interface{}{"red", 4}, out: []interface{}{"red", float64(4)}},
 		{in: []string{"red", "green"}, out: []interface{}{"red", "green"}},
-		// hits the marshaling path
+		// hits the marshaling currentPath
 		{in: &Widget{Size: 5, Color: "red"}, out: dict{"size": float64(5), "color": "red"}},
 		// marshaling might occur deep
 		{in: dict{"widget": &Widget{Size: 5, Color: "red"}}, out: dict{"widget": dict{"size": float64(5), "color": "red"}}},
@@ -917,8 +917,8 @@ func TestGet(t *testing.T) {
 	}
 	for _, test := range tests {
 		result, err := Get(test.v, test.path)
-		require.NoError(t, err, "v = %#v, path = %v", test.v, test.path)
-		require.Equal(t, test.out, result, "v = %#v, path = %v", test.v, test.path)
+		require.NoError(t, err, "v = %#v, currentPath = %v", test.v, test.path)
+		require.Equal(t, test.out, result, "v = %#v, currentPath = %v", test.v, test.path)
 	}
 
 	// errors
@@ -936,7 +936,7 @@ func TestGet(t *testing.T) {
 	}
 	for _, test := range errorTests {
 		_, err := Get(test.v, test.path)
-		assert.EqualError(t, err, test.msg, "v = %#v, path = %v", test.v, test.path)
+		assert.EqualError(t, err, test.msg, "v = %#v, currentPath = %v", test.v, test.path)
 		assert.True(t, merry.Is(err, test.kind), "Wrong type of error.  Expected %v, was %v", test.kind, err)
 	}
 }

@@ -158,19 +158,8 @@ func transform(v interface{}, transformer func(in interface{}) (interface{}, err
 	return v, err
 }
 
-type containsOptions struct {
-	stringContains   bool
-	matchEmptyValues bool
-	trace            *string
-	parseTimes       bool
-	roundTimes       time.Duration
-	truncateTimes    time.Duration
-	timeDelta        time.Duration
-	ignoreTimeZone   bool
-}
-
 // ContainsOption is an option which modifies the behavior of the Contains() function
-type ContainsOption func(*containsOptions)
+type ContainsOption func(ctx *containsCtx)
 
 // EmptyMapValuesMatchAny is an alias for EmptyValuesMatchAny.
 var EmptyMapValuesMatchAny = EmptyValuesMatchAny
@@ -204,7 +193,7 @@ var EmptyMapValuesMatchAny = EmptyValuesMatchAny
 //	v2 := map[string]interface{}{"size":""}
 //	Contains(v1, v2, EmptyMapValuesMatchAny()) // false, because type of value doesn't match (v1: number, v2: string)
 func EmptyValuesMatchAny() ContainsOption {
-	return func(o *containsOptions) {
+	return func(o *containsCtx) {
 		o.matchEmptyValues = true
 	}
 }
@@ -217,8 +206,8 @@ func EmptyValuesMatchAny() ContainsOption {
 // to parse any string values back into time.Time values.  This allows correct processing of
 // the time.Time zero values.
 func ParseTimes() ContainsOption {
-	return func(o *containsOptions) {
-		o.parseTimes = true
+	return func(o *containsCtx) {
+		o.NormalizeTime = true
 	}
 }
 
@@ -227,8 +216,8 @@ func ParseTimes() ContainsOption {
 //
 // Implies ParseTimes
 func AllowTimeDelta(d time.Duration) ContainsOption {
-	return func(o *containsOptions) {
-		o.parseTimes = true
+	return func(o *containsCtx) {
+		o.NormalizeTime = true
 		o.timeDelta = d
 	}
 }
@@ -237,8 +226,8 @@ func AllowTimeDelta(d time.Duration) ContainsOption {
 //
 // Implies ParseTimes
 func TruncateTimes(d time.Duration) ContainsOption {
-	return func(o *containsOptions) {
-		o.parseTimes = true
+	return func(o *containsCtx) {
+		o.NormalizeTime = true
 		o.truncateTimes = d
 	}
 }
@@ -247,8 +236,8 @@ func TruncateTimes(d time.Duration) ContainsOption {
 //
 // Implies ParseTimes
 func RoundTimes(d time.Duration) ContainsOption {
-	return func(o *containsOptions) {
-		o.parseTimes = true
+	return func(o *containsCtx) {
+		o.NormalizeTime = true
 		o.roundTimes = d
 	}
 }
@@ -258,8 +247,8 @@ func RoundTimes(d time.Duration) ContainsOption {
 //
 // Implies ParseTimes
 func IgnoreTimeZones(b bool) ContainsOption {
-	return func(o *containsOptions) {
-		o.parseTimes = true
+	return func(o *containsCtx) {
+		o.NormalizeTime = true
 		o.ignoreTimeZone = b
 	}
 }
@@ -272,12 +261,12 @@ func IgnoreTimeZones(b bool) ContainsOption {
 //	Contains("brown fox", "fox") // false
 //	Contains("brown fox", "fox", StringContains()) // true
 func StringContains() ContainsOption {
-	return func(o *containsOptions) {
+	return func(o *containsCtx) {
 		o.stringContains = true
 	}
 }
 
-// Trace sets `s` to a string describing the path to the values where containment was false.  Helps
+// Trace sets `s` to a string describing the currentPath to the values where containment was false.  Helps
 // debugging why one value doesn't contain another.  Sample output:
 //
 //	-> v1: map[time:2017-03-03T14:08:30.097698864-05:00]
@@ -288,7 +277,7 @@ func StringContains() ContainsOption {
 //
 // If `s` is nil, it does nothing.
 func Trace(s *string) ContainsOption {
-	return func(o *containsOptions) {
+	return func(o *containsCtx) {
 		o.trace = s
 	}
 }
@@ -354,10 +343,8 @@ func ContainsMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 
 func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Match {
 	for _, o := range options {
-		o(&ctx.containsOptions)
+		o(ctx)
 	}
-
-	ctx.NormalizeTime = ctx.parseTimes
 
 	if ctx.trace != nil {
 		ctx.explain = true
@@ -365,22 +352,17 @@ func containsMatch(v1, v2 any, ctx *containsCtx, options ...ContainsOption) Matc
 
 	ctx.Marshal = true
 
-	match := Match{
-		Matches: contains(v1, v2, ctx),
-		V1:      ctx.v1,
-		V2:      ctx.v2,
-		Error:   ctx.err,
-		Path:    ctx.eventPath,
-		Message: ctx.mismatchMsg,
-	}
+	ctx.Matches = contains(v1, v2, ctx)
 
 	if ctx.trace != nil {
-		*ctx.trace = match.Message
+		*ctx.trace = ctx.Message
 	}
+
+	m := ctx.Match
 
 	ctx.release()
 
-	return match
+	return m
 }
 
 // Equivalent checks if v1 and v2 are approximately deeply equal to each other.
@@ -410,38 +392,41 @@ func EquivalentMatch(v1, v2 interface{}, options ...ContainsOption) Match {
 }
 
 type containsCtx struct {
-	v1          interface{}
-	v2          interface{}
-	eventPath   string
-	path        []string
-	mismatchMsg string
-	explain     bool  // if true, set mismatchMsg to string explaining reason for match failure
-	err         error // stores last normalization error for v1 and v2
-	equiv       bool  // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
+	Match
+	currentPath []string
+	explain     bool // if true, set mismatchMsg to string explaining reason for match failure
+	equiv       bool // if true, check that v1 and v2 are equivalent, not just that v1 contains v2
 
 	strBuf []string // re-usable scratch space
-	containsOptions
+
+	// options
+	stringContains   bool          // when comparing strings, allow a match when v1 contains v2
+	matchEmptyValues bool          // allow a match when v2 is either nil, or the zero value of the same type as v1
+	trace            *string       // when not-nil and when the match fails, assign the pointer to the value of containsCtx.Match.Message
+	roundTimes       time.Duration // round times to the nearest increment
+	truncateTimes    time.Duration // truncate times (round down) to the nearest increment
+	timeDelta        time.Duration // allow times to match as long as they are within this delta
+	ignoreTimeZone   bool          // allow times to match even if time zones are different
 	NormalizeOptions
 }
 
 func (c *containsCtx) release() {
-	c.v1 = nil
-	c.v2 = nil
-	c.eventPath = ""
-	c.path = c.path[:0]
-	c.mismatchMsg = ""
+	c.V1 = nil
+	c.V2 = nil
+	c.Path = ""
+	c.currentPath = c.currentPath[:0]
+	c.Message = ""
 	c.explain = false
-	c.err = nil
+	c.Error = nil
 	c.equiv = false
 	c.strBuf = c.strBuf[:0]
-	c.containsOptions.stringContains = false
-	c.containsOptions.trace = nil
-	c.containsOptions.matchEmptyValues = false
-	c.containsOptions.parseTimes = false
-	c.containsOptions.timeDelta = 0
-	c.containsOptions.roundTimes = 0
-	c.containsOptions.truncateTimes = 0
-	c.containsOptions.ignoreTimeZone = false
+	c.stringContains = false
+	c.trace = nil
+	c.matchEmptyValues = false
+	c.timeDelta = 0
+	c.roundTimes = 0
+	c.truncateTimes = 0
+	c.ignoreTimeZone = false
 	c.NormalizeOptions.NormalizeTime = false
 	c.NormalizeOptions.Copy = false
 	c.NormalizeOptions.Deep = false
@@ -454,8 +439,8 @@ var ctxPool sync.Pool
 func init() {
 	ctxPool.New = func() any {
 		return &containsCtx{
-			strBuf: make([]string, 0, 20),
-			path:   make([]string, 10),
+			strBuf:      make([]string, 0, 20),
+			currentPath: make([]string, 10),
 		}
 	}
 }
@@ -472,21 +457,21 @@ func (c *containsCtx) traceMsg(v1, v2 interface{}, msg string, msgArgs ...any) {
 		return
 	}
 
-	c.eventPath = strings.TrimPrefix(strings.Join(c.path, ""), ".")
+	c.Path = strings.TrimPrefix(strings.Join(c.currentPath, ""), ".")
 
 	var b strings.Builder
 
 	_, _ = fmt.Fprintf(&b, msg, msgArgs...)
-	if len(c.eventPath) > 0 {
-		_, _ = fmt.Fprintf(&b, "\nv1.%s -> %#v\nv2.%s -> %#v", c.eventPath, v1, c.eventPath, v2)
+	if len(c.Path) > 0 {
+		_, _ = fmt.Fprintf(&b, "\nv1.%s -> %#v\nv2.%s -> %#v", c.Path, v1, c.Path, v2)
 	} else {
 		_, _ = fmt.Fprintf(&b, "\nv1 -> %#v\nv2 -> %#v", v1, v2)
 	}
 
-	c.mismatchMsg = b.String()
+	c.Message = b.String()
 
-	c.v1 = v1
-	c.v2 = v2
+	c.V1 = v1
+	c.V2 = v2
 }
 
 func (c *containsCtx) traceNotEqual(v1, v2 interface{}) {
@@ -530,26 +515,26 @@ func compareTimes(tm1, tm2 time.Time, ctx *containsCtx) bool {
 }
 
 func dive(path string, v1, v2 interface{}, ctx *containsCtx) bool {
-	ctx.path = append(ctx.path, path)
+	ctx.currentPath = append(ctx.currentPath, path)
 	b1 := contains(v1, v2, ctx)
-	ctx.path = ctx.path[:len(ctx.path)-1]
+	ctx.currentPath = ctx.currentPath[:len(ctx.currentPath)-1]
 	return b1
 }
 
 func contains(v1, v2 interface{}, ctx *containsCtx) (b bool) {
 	var nv1, nv2 interface{}
-	nv1, ctx.err = normalize(v1, &ctx.NormalizeOptions)
-	if ctx.err != nil {
-		ctx.traceMsg(v1, v2, "err normalizing v1: %s", ctx.err.Error())
+	nv1, ctx.Error = normalize(v1, &ctx.NormalizeOptions)
+	if ctx.Error != nil {
+		ctx.traceMsg(v1, v2, "err normalizing v1: %s", ctx.Error.Error())
 		return false
 	}
-	nv2, ctx.err = normalize(v2, &ctx.NormalizeOptions)
-	if ctx.err != nil {
-		ctx.traceMsg(v1, v2, "err normalizing v2: %s", ctx.err.Error())
+	nv2, ctx.Error = normalize(v2, &ctx.NormalizeOptions)
+	if ctx.Error != nil {
+		ctx.traceMsg(v1, v2, "err normalizing v2: %s", ctx.Error.Error())
 		return false
 	}
 	match := containsNormalized(nv1, nv2, ctx)
-	if !match && ctx.mismatchMsg == "" && ctx.err == nil {
+	if !match && ctx.Message == "" && ctx.Error == nil {
 		ctx.traceNotEqual(v1, v2)
 	}
 	return match
@@ -994,13 +979,13 @@ func Normalize(v1 interface{}, opts ...NormalizeOption) (interface{}, error) {
 	return normalize(v1, &opt)
 }
 
-// PathNotFoundError indicates the requested path was not present in the value.
+// PathNotFoundError indicates the requested currentPath was not present in the value.
 var PathNotFoundError = merry.New("Path not found")
 
-// PathNotMapError indicates the value at the path is not a map.
+// PathNotMapError indicates the value at the currentPath is not a map.
 var PathNotMapError = merry.New("Path not map")
 
-// PathNotSliceError indicates the value at the path is not a slice.
+// PathNotSliceError indicates the value at the currentPath is not a slice.
 var PathNotSliceError = merry.New("Path not slice")
 
 // IndexOutOfBoundsError indicates the index doesn't exist in the slice.
@@ -1009,7 +994,7 @@ var IndexOutOfBoundsError = merry.New("Index out of bounds")
 // Path is a slice of either strings or slice indexes (ints).
 type Path []interface{}
 
-// ParsePath parses a string path into a Path slice.  String paths look
+// ParsePath parses a string currentPath into a Path slice.  String paths look
 // like:
 //
 //	user.name.first
@@ -1021,7 +1006,7 @@ func ParsePath(path string) (Path, error) {
 		part := parts[i]
 
 		arrayIdx := -1
-		// first check of the path part ends in an array index, like
+		// first check of the currentPath part ends in an array index, like
 		//
 		//     tags[2]
 		//
@@ -1069,7 +1054,7 @@ func (p Path) String() string {
 	return buf.String()
 }
 
-// Get extracts the value at path from v.
+// Get extracts the value at currentPath from v.
 // Path is in the form:
 //
 //	response.things[2].color.red
@@ -1080,7 +1065,7 @@ func (p Path) String() string {
 //	if merry.Is(err, maps.PathNotFoundError) {
 //	  ...
 //
-// Returns PathNotFoundError if the next key in the path is not found.
+// Returns PathNotFoundError if the next key in the currentPath is not found.
 //
 // Returns PathNotMapError if evaluating a key against a value which is not
 // a map (e.g. a slice or a primitive value, against
@@ -1104,7 +1089,7 @@ func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, erro
 
 	parsedPath, err := ParsePath(path)
 	if err != nil {
-		return nil, merry.Prepend(err, "Couldn't parse the path")
+		return nil, merry.Prepend(err, "Couldn't parse the currentPath")
 	}
 	out := v
 	for i, part := range parsedPath {
@@ -1143,7 +1128,7 @@ func Get(v interface{}, path string, opts ...NormalizeOption) (interface{}, erro
 				return nil, PathNotSliceError.Here().WithMessage("v is not a slice")
 			}
 		default:
-			panic(merry.Errorf("Unexpected type for parsed path element: %#v", part))
+			panic(merry.Errorf("Unexpected type for parsed currentPath element: %#v", part))
 		}
 	}
 	return out, nil
