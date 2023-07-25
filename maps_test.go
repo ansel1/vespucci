@@ -791,11 +791,20 @@ func BenchmarkBigMerge(b *testing.B) {
 	for i := 0; i < 100; i++ {
 		s2 = append(s2, bigNestedMaps(fmt.Sprintf("water%v", i), 3))
 	}
-	// pp.Println("m1", m1)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		Merge(m1, m2)
-	}
+
+	b.Run("withCopy", func(b *testing.B) {
+		// pp.Println("m1", m1)
+		for i := 0; i < b.N; i++ {
+			Merge(m1, m2)
+		}
+	})
+
+	b.Run("noCopy", func(b *testing.B) {
+		// pp.Println("m1", m1)
+		for i := 0; i < b.N; i++ {
+			Merge(m1, m2, Copy(false))
+		}
+	})
 }
 
 func BenchmarkMerge(b *testing.B) {
@@ -1010,9 +1019,23 @@ func TestEmpty(t *testing.T) {
 
 func BenchmarkEmpty(b *testing.B) {
 	var w Widget
-	for i := 0; i < b.N; i++ {
-		Empty(w)
-	}
+	b.Run("struct", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Empty(w)
+		}
+	})
+
+	b.Run("largeValue", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Empty(largeTestVal1)
+		}
+	})
+
+	b.Run("primitive", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			Empty(5)
+		}
+	})
 }
 
 func TestInternalNormalize(t *testing.T) {
