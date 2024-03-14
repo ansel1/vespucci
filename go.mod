@@ -7,7 +7,7 @@ require (
 	github.com/k0kubun/pp v2.3.0+incompatible
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/stretchr/testify v1.8.4
-	google.golang.org/protobuf v1.31.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
